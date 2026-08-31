@@ -13,10 +13,10 @@ with urllib.request.urlopen(req, timeout=30) as resp:
 now = datetime.datetime.now(datetime.timezone.utc)
 record = {"collected_at": now.isoformat(), "data": data}
 
-out_dir = "data"
+out_dir = os.path.join("data", f"{now:%Y-%m-%d}")
 os.makedirs(out_dir, exist_ok=True)
-out_path = os.path.join(out_dir, f"{now:%Y-%m-%d}.jsonl")
-with open(out_path, "a", encoding="utf-8") as f:
-    f.write(json.dumps(record, ensure_ascii=False) + "\n")
+out_path = os.path.join(out_dir, f"{now:%Y-%m-%d_%H-%M-%S}.json")
+with open(out_path, "w", encoding="utf-8") as f:
+    json.dump(record, f, ensure_ascii=False)
 
 print(f"Saved to {out_path}")
