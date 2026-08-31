@@ -10,7 +10,8 @@ req = urllib.request.Request(API_URL, headers={"api-token": API_TOKEN})
 with urllib.request.urlopen(req, timeout=30) as resp:
     data = json.load(resp)
 
-now = datetime.datetime.now(datetime.timezone.utc)
+KST = datetime.timezone(datetime.timedelta(hours=9))
+now = datetime.datetime.now(KST)
 record = {"collected_at": now.isoformat(), "data": data}
 
 out_dir = os.path.join("data", f"{now:%Y-%m-%d}")
