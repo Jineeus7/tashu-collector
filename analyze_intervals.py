@@ -2,16 +2,17 @@
 
 import datetime
 import glob
+import gzip
 import json
 import statistics
 
-paths = sorted(glob.glob("data/*/*.json"))
+paths = sorted(glob.glob("data/*/*.json.gz"))
 if len(paths) < 2:
     raise SystemExit(f"수집 파일이 {len(paths)}개뿐입니다. 최소 2개는 있어야 간격을 잴 수 있어요.")
 
 times = []
 for path in paths:
-    with open(path, encoding="utf-8") as f:
+    with gzip.open(path, "rt", encoding="utf-8") as f:
         times.append(datetime.datetime.fromisoformat(json.load(f)["collected_at"]))
 times.sort()
 
