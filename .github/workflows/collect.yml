@@ -1,9 +1,17 @@
 name: Collect Tashu Station Data
 
 on:
+  # 예약 실행은 GitHub 부하에 따라 수십 분 밀릴 수 있어 정확한 주기를 보장하지 않는다.
+  # 정시 실행은 외부 스케줄러가 workflow_dispatch API를 호출해 처리하고,
+  # 아래 schedule은 그게 멈췄을 때를 대비한 예비 수단으로 남겨둔다.
   schedule:
     - cron: "4,14,24,34,44,54 * * * *"
   workflow_dispatch: {}
+
+# 외부 트리거와 schedule이 겹쳐도 push가 충돌하지 않도록 한 번에 하나만 돌린다.
+concurrency:
+  group: collect
+  cancel-in-progress: false
 
 jobs:
   collect:
@@ -26,6 +34,15 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data
-          git diff --staged --quiet || git commit -m "Add data $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          git push
+          git add data stations.json
+          if git diff --staged --quiet; then
+            echo "변경 없음"
+            exit 0
+          fi
+          git commit -m "Add data $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          for attempt in 1 2 3 4 5; do
+            git push && exit 0
+            echo "push 실패 ($attempt회차), 원격 변경을 받아 재시도합니다"
+            git pull --rebase
+          done
+          exit 1
