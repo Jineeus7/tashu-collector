@@ -10,15 +10,45 @@ import datetime
 import gzip
 import json
 import os
+import time
+import urllib.error
 import urllib.request
 
 API_URL = "https://bikeapp.tashu.or.kr:50041/v1/openapi/station"
 API_TOKEN = os.environ["TASHU_API_TOKEN"]
 KST = datetime.timezone(datetime.timedelta(hours=9))
 
-req = urllib.request.Request(API_URL, headers={"api-token": API_TOKEN})
-with urllib.request.urlopen(req, timeout=30) as resp:
-    payload = json.load(resp)
+# 실행이 10분에 한 번이므로 재시도에 쓸 수 있는 시간은 넉넉하다.
+ATTEMPTS = 3
+BACKOFF_SECONDS = 5
+
+
+def fetch():
+    """일시적인 네트워크 장애로 슬롯을 통째로 놓치지 않도록 몇 번 다시 부른다.
+
+    지금까지 실패한 실행은 전부 러너 쪽 이름 해석 실패(Errno -3)였고 바로
+    다음 실행은 멀쩡했다. 몇 초만 기다렸다 다시 부르면 넘어가는 종류의
+    장애라, 재시도가 없으면 10분치 스냅샷 하나가 그냥 사라진다.
+
+    반면 토큰이 틀렸거나 하는 4xx는 다시 불러도 결과가 같으므로 즉시
+    포기해서, 진짜 고쳐야 할 문제가 재시도 뒤에 가려지지 않게 한다.
+    """
+    for attempt in range(1, ATTEMPTS + 1):
+        try:
+            req = urllib.request.Request(API_URL, headers={"api-token": API_TOKEN})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return json.load(resp)
+        except urllib.error.URLError as err:
+            if isinstance(err, urllib.error.HTTPError) and 400 <= err.code < 500:
+                raise
+            if attempt == ATTEMPTS:
+                raise
+            wait = BACKOFF_SECONDS * attempt
+            print(f"수집 실패 ({attempt}/{ATTEMPTS}): {err} — {wait}초 후 재시도")
+            time.sleep(wait)
+
+
+payload = fetch()
 
 # 응답에는 수집 시각이 없으므로 파일명과 별개로 안에도 남겨둔다.
 now = datetime.datetime.now(KST)
