@@ -1,48 +1,165 @@
 name: Collect Tashu Station Data
 
 on:
-  # 예약 실행은 GitHub 부하에 따라 수십 분 밀릴 수 있어 정확한 주기를 보장하지 않는다.
-  # 정시 실행은 외부 스케줄러가 workflow_dispatch API를 호출해 처리하고,
-  # 아래 schedule은 그게 멈췄을 때를 대비한 예비 수단으로 남겨둔다.
-  schedule:
-    - cron: "4,14,24,34,44,54 * * * *"
-  workflow_dispatch: {}
+  # GitHub의 예약 실행은 부하가 걸리면 몇 시간씩 밀리거나 통째로 건너뛴다.
+  # 9/9 저녁 외부 스케줄러가 멈춘 뒤 20시간 동안 schedule이 6번밖에 돌지
+  # 않아 10분 간격이 그대로 무너졌다. 그래서 수집을 예약에 맡기지 않는다.
+  # 한 실행이 러너 안에서 5시간 30분 동안 10분마다 직접 수집한 뒤, 끝나기
+  # 전에 스스로 다음 실행을 띄워 사슬을 잇는다. 트리거가 사슬 안에 있으므로
+  # 외부 스케줄러도, 만료될 수 있는 PAT도 필요하지 않다.
+  workflow_dispatch:
+    inputs:
+      chained:
+        description: 앞선 실행이 이어붙인 실행인지 (사람이 수동으로 돌릴 때는 그대로 둔다)
+        type: boolean
+        default: false
 
-# 외부 트리거와 schedule이 겹쳐도 push가 충돌하지 않도록 한 번에 하나만 돌린다.
-concurrency:
-  group: collect
-  cancel-in-progress: false
+  # 사슬이 끊겼을 때(러너 급사, 취소, 이어붙이기 실패) 다시 붙이는 예비 수단.
+  # 이미 도는 사슬이 있으면 아래 guard가 즉시 양보하므로 겹쳐 돌지 않는다.
+  # 예약이 밀리는 건 여전하지만, 여기서는 정시성이 아니라 복구만 맡는다.
+  schedule:
+    - cron: "*/5 * * * *"
+
+permissions:
+  contents: write
+  # 스스로 다음 실행을 dispatch 하려면 필요하다. GITHUB_TOKEN이 만든 이벤트는
+  # 보통 새 워크플로 실행을 만들지 못하지만 workflow_dispatch와
+  # repository_dispatch는 명시된 예외라, 별도 PAT 없이 사슬을 이을 수 있다.
+  actions: write
 
 jobs:
   collect:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    # 한 잡이 살 수 있는 상한은 6시간이다. 루프는 5시간 30분에서 스스로
+    # 물러나고, 이건 그마저 어긋났을 때 러너를 붙잡아두지 않기 위한 안전판이다.
+    timeout-minutes: 350
+
     steps:
+      - name: 이미 도는 사슬이 있으면 양보
+        id: guard
+        # 사슬이 이어붙인 실행은 검사하지 않는다. 앞선 실행이 아직 in_progress인
+        # 채로 다음을 띄우기 때문에, 검사를 걸면 사슬이 스스로 끊긴다.
+        if: github.event.inputs.chained != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 아직 끝나지 않은 다른 실행을 세는 helper.
+          alive() {
+            local total=0 n
+            for run_status in in_progress queued; do
+              n=$(gh api --paginate \
+                "repos/$GITHUB_REPOSITORY/actions/workflows/collect.yml/runs?status=$run_status&per_page=100" \
+                --jq "[.workflow_runs[] | $1] | length" \
+                | awk '{s += $1} END {print s + 0}')
+              total=$(( total + n ))
+            done
+            echo "$total"
+          }
+
+          # 실행 ID는 뒤로 갈수록 커진다. "나보다 오래된 실행이 아직 살아
+          # 있으면 내가 물러난다"로 정하면 동시에 여럿이 깨어나도 가장 오래된
+          # 하나만 남고, 판정에 경쟁 상태가 생기지 않는다.
+          if [ "$(alive "select(.id < $GITHUB_RUN_ID)")" -gt 0 ]; then
+            echo "이미 도는 사슬이 있어 이번 실행은 넘어간다"
+            echo "yield=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 앞선 실행은 아직 살아 있는 채로 다음을 띄운다. 그 successor가
+          # 나보다 몇 초 늦게 만들어졌다면 위의 ID 규칙에는 걸리지 않아,
+          # 사슬이 이미 이어졌는데도 내가 두 번째 사슬을 시작하게 된다.
+          # 그래서 잠깐 기다렸다 dispatch로 만들어진 실행을 한 번 더 본다.
+          # 예약으로 깨어난 것끼리는 event가 schedule이라 여기서 서로를 보지
+          # 않으므로, 위의 ID 규칙이 그대로 하나를 정한다.
+          sleep 30
+          if [ "$(alive "select(.id != $GITHUB_RUN_ID) | select(.event == \"workflow_dispatch\")")" -gt 0 ]; then
+            echo "사슬이 방금 이어졌다. 이번 실행은 넘어간다"
+            echo "yield=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "도는 사슬이 없다. 이번 실행이 사슬을 시작한다"
+
       - uses: actions/checkout@v4
+        if: steps.guard.outputs.yield != 'true'
 
       - uses: actions/setup-python@v5
+        if: steps.guard.outputs.yield != 'true'
         with:
           python-version: "3.12"
 
-      - name: Collect data
+      - name: 10분마다 수집
+        if: steps.guard.outputs.yield != 'true'
         env:
           TASHU_API_TOKEN: ${{ secrets.TASHU_API_TOKEN }}
-        run: python collect.py
-
-      - name: Commit and push
         run: |
+          set -u
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data
-          if git diff --staged --quiet; then
-            echo "변경 없음"
+
+          # 다음 실행에 자리를 넘길 시각. 6시간 상한에서 30분을 남겨,
+          # 마지막 수집과 사슬 잇기가 잘려나가지 않게 한다.
+          deadline=$(( $(date +%s) + 5 * 3600 + 30 * 60 ))
+          collected=0
+          missed=0
+
+          while :; do
+            now=$(date +%s)
+            # 매번 10분 경계를 다시 계산한다. 수집과 push에 걸린 시간이
+            # 다음 슬롯을 뒤로 밀지 않고, 간격이 조금씩 흘러가지도 않는다.
+            next=$(( (now / 600 + 1) * 600 ))
+            [ "$next" -ge "$deadline" ] && break
+            sleep $(( next - now ))
+
+            if ! python collect.py; then
+              # 한 슬롯이 실패했다고 루프를 끝내면 남은 다섯 시간을 통째로
+              # 버리게 된다. 실패는 세어서 로그에 드러내고 계속 간다.
+              missed=$(( missed + 1 ))
+              echo "::warning::수집 실패 (이번 실행 누적 ${missed}회)"
+              continue
+            fi
+
+            git add data
+            if git diff --staged --quiet; then
+              echo "변경 없음"
+              continue
+            fi
+            git commit -q -m "Add data $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+            pushed=""
+            for attempt in 1 2 3 4 5; do
+              if git push -q; then
+                pushed=yes
+                break
+              fi
+              echo "push 실패 (${attempt}회차), 원격 변경을 받아 재시도합니다"
+              git pull --rebase -q || true
+            done
+            if [ -z "$pushed" ]; then
+              # 커밋은 러너 안에 남아 있으니 다음 슬롯에서 같이 올라간다.
+              echo "::warning::push가 다섯 번 모두 실패했다. 다음 슬롯에서 다시 시도한다."
+              continue
+            fi
+            collected=$(( collected + 1 ))
+          done
+
+          echo "이번 실행: ${collected}개 수집, ${missed}개 실패"
+
+      - name: 다음 실행 이어붙이기
+        # 루프가 실패로 끝나도 사슬은 이어야 한다. 다만 사람이 일부러 취소한
+        # 경우(cancelled)에는 잇지 않아, 멈추고 싶을 때 멈출 수 있게 둔다.
+        if: (success() || failure()) && steps.guard.outputs.yield != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 부팅 직후 죽는 실행이 곧바로 다음을 띄우면 실행이 폭주한다.
+          # 정상 사슬은 다섯 시간 넘게 살아 있으므로, 너무 빨리 끝난 실행은
+          # 여기서 끊고 복구를 schedule에 넘긴다.
+          started=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .run_started_at)
+          elapsed=$(( $(date +%s) - $(date -u -d "$started" +%s) ))
+          if [ "$elapsed" -lt 600 ]; then
+            echo "::warning::${elapsed}초 만에 끝났다. 폭주를 막기 위해 사슬을 잇지 않는다. schedule이 다시 붙인다."
             exit 0
           fi
-          git commit -m "Add data $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          for attempt in 1 2 3 4 5; do
-            git push && exit 0
-            echo "push 실패 ($attempt회차), 원격 변경을 받아 재시도합니다"
-            git pull --rebase
-          done
-          exit 1
+          gh workflow run collect.yml --ref "$GITHUB_REF_NAME" -f chained=true
+          echo "다음 실행을 띄웠다"
