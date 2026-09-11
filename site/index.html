@@ -77,13 +77,57 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const STEPS = [0, 10, 20, 30, 60, 90, 120];   // 0 = 지금(실측)
+
+// 위치를 못 받았을 때 설 자리. 1,374곳을 한 화면에 뿌리면 핀이 겹쳐 읽을 수
+// 없으므로, 어디든 한 곳에 서 있다고 보고 그 주변만 그린다.
+const FALLBACK = {la: 36.3504, lo: 127.3845, name: "둔산동"};
+const RADIUS_M = 1000;     // 걸어서 15분쯤
+const MAX_PINS = 25;
+
 let data, stations, markers = {}, picked = null, step = 0;
+let here = FALLBACK, map = null, nearby = [];
 
 const grade = n => n === 0 ? ["none","없음"] : n <= 2 ? ["bad","부족"]
                   : n <= 5 ? ["mid","보통"] : ["ok","여유"];
 
 // 지금은 실측, 나머지는 예측. 배열 인덱스는 STEPS에서 1 밀린다.
 const valueAt = (id, s) => s === 0 ? data.stock[id] : (data.pred[id] || [])[s - 1];
+
+function pickNearby(){
+  const out = [];
+  for(const id in stations){
+    if(data.stock[id] === undefined) continue;
+    const s = stations[id];
+    const d = L.latLng(here.la, here.lo).distanceTo(L.latLng(s.la, s.lo));
+    if(d <= RADIUS_M) out.push({id, d});
+  }
+  out.sort((a, b) => a.d - b.d);
+  // 반경 안이 너무 적으면(외곽) 가까운 순으로 채운다
+  if(out.length < 8){
+    const all = [];
+    for(const id in stations){
+      if(data.stock[id] === undefined) continue;
+      const s = stations[id];
+      all.push({id, d: L.latLng(here.la, here.lo).distanceTo(L.latLng(s.la, s.lo))});
+    }
+    all.sort((a, b) => a.d - b.d);
+    return all.slice(0, 12);
+  }
+  return out.slice(0, MAX_PINS);
+}
+
+function drawPins(){
+  for(const id in markers) map.removeLayer(markers[id]);
+  markers = {};
+  for(const {id} of nearby){
+    const s = stations[id];
+    markers[id] = L.marker([s.la, s.lo], {icon: icon(valueAt(id, step))})
+      .addTo(map).on("click", () => showSheet(id));
+  }
+  const pts = nearby.map(({id}) => [stations[id].la, stations[id].lo]);
+  pts.push([here.la, here.lo]);
+  map.fitBounds(L.latLngBounds(pts).pad(0.12));
+}
 
 function icon(n){
   const [cls] = grade(n);
@@ -136,7 +180,7 @@ function showSheet(id){
 
 function nearestBetter(id, me, v){
   let best = null;
-  for(const oid in stations){
+  for(const {id: oid} of nearby){
     if(oid === id) continue;
     const n = valueAt(oid, step);
     if(n === undefined || n < Math.max(4, v + 3)) continue;
@@ -154,39 +198,35 @@ function nearestBetter(id, me, v){
     fetch("predictions.json" + bust).then(r => r.json()),
   ]);
 
-  const map = L.map("map", {zoomControl:false}).setView([36.351, 127.385], 14);
-  // CARTO 타일은 이제 키를 요구해 지도에 워터마크가 깔린다. OSM 기본 타일은
-  // 키 없이 쓸 수 있고 이 정도 트래픽은 이용약관 범위 안이다.
+  map = L.map("map", {zoomControl:false});
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
     {attribution:"&copy; OpenStreetMap", maxZoom:19}).addTo(map);
   L.control.zoom({position:"bottomright"}).addTo(map);
 
-  for(const id in stations){
-    const v = data.stock[id];
-    if(v === undefined) continue;
-    const s = stations[id];
-    markers[id] = L.marker([s.la, s.lo], {icon: icon(v)})
-      .addTo(map).on("click", () => showSheet(id));
-  }
-
-  const at = new Date(Date.parse(data.at));
-  const ago = Math.max(0, Math.round((Date.now() - at) / 60000));
-  document.getElementById("stamp").textContent =
-    `${ago}분 전 기준 · 대여소 ${Object.keys(data.stock).length}곳 · 10분마다 갱신`;
+  const start = pos => {
+    here = pos;
+    L.circleMarker([here.la, here.lo], {radius:7, color:"#fff", weight:3,
+      fillColor:"#1f6feb", fillOpacity:1}).addTo(map);
+    nearby = pickNearby();
+    drawPins();
+    redraw();
+    const at = new Date(Date.parse(data.at));
+    const ago = Math.max(0, Math.round((Date.now() - at) / 60000));
+    document.getElementById("stamp").textContent =
+      `${ago}분 전 기준 · 내 주변 ${nearby.length}곳 · 10분마다 갱신`;
+    document.getElementById("loading").remove();
+  };
 
   document.getElementById("slider").addEventListener("input", e => {
     step = +e.target.value; redraw();
   });
-  redraw();
-  document.getElementById("loading").remove();
 
   if(navigator.geolocation){
-    navigator.geolocation.getCurrentPosition(p => {
-      const {latitude:la, longitude:lo} = p.coords;
-      L.circleMarker([la, lo], {radius:7,color:"#fff",weight:3,
-        fillColor:"#1f6feb",fillOpacity:1}).addTo(map);
-      map.setView([la, lo], 15);
-    }, () => {}, {timeout:5000});
+    navigator.geolocation.getCurrentPosition(
+      p => start({la:p.coords.latitude, lo:p.coords.longitude}),
+      () => start(FALLBACK), {timeout:6000});
+  } else {
+    start(FALLBACK);
   }
 })();
 </script>

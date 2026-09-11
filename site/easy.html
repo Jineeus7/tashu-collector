@@ -58,7 +58,9 @@
   <div class="foot" id="foot"></div>
 
 <script>
-let data, stations, step = 0, here = null;
+// 위치를 못 받아도 화면이 비지 않게 대전 한 곳에 서 있다고 본다.
+const FALLBACK = {la: 36.3504, lo: 127.3845};
+let data, stations, step = 0, here = FALLBACK;
 
 // 숫자를 말로 바꾼다. 대수를 그대로 보여주면 "5대가 많은 건가" 를 다시
 // 판단해야 하므로, 판단까지 끝낸 문장으로 준다.
@@ -113,9 +115,7 @@ function locate(){
   document.getElementById("list").innerHTML = `<div class="msg">위치를 찾는 중…</div>`;
   navigator.geolocation.getCurrentPosition(
     p => { here = {la:p.coords.latitude, lo:p.coords.longitude}; render(); },
-    () => { document.getElementById("list").innerHTML =
-      `<div class="msg">위치를 알 수 없어요.<br>휴대폰 설정에서 위치를 켜주세요.
-         <br><button onclick="locate()">다시 시도</button></div>`; },
+    () => { here = FALLBACK; render(); },
     {timeout:8000});
 }
 
