@@ -86,11 +86,18 @@ function render(){
   const near = [];
   for(const id in stations){
     const n = step ? (data.pred[id]||[])[3] : data.stock[id];   // 3번째 = 60분
-    if(n === undefined) continue;
+    if(n === undefined || n === 0) continue;   // 없는 곳은 보여줄 이유가 없다
     const s = stations[id];
     near.push({nm:s.n, n, d:dist(here.la, here.lo, s.la, s.lo)});
   }
   near.sort((a,b) => a.d - b.d);
+
+  if(!near.length){
+    document.getElementById("list").innerHTML =
+      `<div class="msg">근처에 탈 수 있는<br>자전거가 없어요.</div>`;
+    document.getElementById("foot").textContent = "";
+    return;
+  }
 
   document.getElementById("list").innerHTML = near.slice(0,5).map(s => {
     const [text, cls] = say(s.n);

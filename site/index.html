@@ -83,6 +83,7 @@ const STEPS = [0, 10, 20, 30, 60, 90, 120];   // 0 = 지금(실측)
 const FALLBACK = {la: 36.3504, lo: 127.3845, name: "둔산동"};
 const RADIUS_M = 1000;     // 걸어서 15분쯤
 const MAX_PINS = 25;
+const CANDIDATES = 80;   // 0을 빼고도 채울 수 있게 넉넉히
 
 let data, stations, markers = {}, picked = null, step = 0;
 let here = FALLBACK, map = null, nearby = [];
@@ -111,22 +112,32 @@ function pickNearby(){
       all.push({id, d: L.latLng(here.la, here.lo).distanceTo(L.latLng(s.la, s.lo))});
     }
     all.sort((a, b) => a.d - b.d);
-    return all.slice(0, 12);
+    return all.slice(0, 30);
   }
-  return out.slice(0, MAX_PINS);
+  return out.slice(0, CANDIDATES);
 }
 
-function drawPins(){
+// 그 시점에 자전거가 없는 곳은 그리지 않는다. 타려는 사람에게 0은
+// 선택지가 아니라 잡음이다. 슬라이더를 옮기면 대상이 달라지므로 다시 그린다.
+function shown(){
+  return nearby.filter(({id}) => valueAt(id, step) > 0).slice(0, MAX_PINS);
+}
+
+function drawPins(fit){
   for(const id in markers) map.removeLayer(markers[id]);
   markers = {};
-  for(const {id} of nearby){
+  const list = shown();
+  for(const {id} of list){
     const s = stations[id];
     markers[id] = L.marker([s.la, s.lo], {icon: icon(valueAt(id, step))})
       .addTo(map).on("click", () => showSheet(id));
   }
-  const pts = nearby.map(({id}) => [stations[id].la, stations[id].lo]);
-  pts.push([here.la, here.lo]);
-  map.fitBounds(L.latLngBounds(pts).pad(0.12));
+  if(fit && list.length){
+    const pts = list.map(({id}) => [stations[id].la, stations[id].lo]);
+    pts.push([here.la, here.lo]);
+    map.fitBounds(L.latLngBounds(pts).pad(0.12));
+  }
+  document.getElementById("count").textContent = list.length;
 }
 
 function icon(n){
@@ -143,11 +154,10 @@ function redraw(){
   const mins = STEPS[step];
   document.getElementById("when").innerHTML = mins === 0 ? "지금"
     : `${mins < 60 ? mins + "분" : (mins/60) + "시간"} 뒤 <small>${clock(mins)}</small>`;
-  for(const id in markers){
-    const v = valueAt(id, step);
-    if(v !== undefined) markers[id].setIcon(icon(v));
-  }
-  if(picked) showSheet(picked);
+  drawPins(false);
+  // 고른 대여소가 이 시점엔 0이라 사라졌다면 카드를 닫는다
+  if(picked && !markers[picked]){ picked = null; document.getElementById("sheet").classList.remove("on"); }
+  else if(picked) showSheet(picked);
 }
 
 function clock(mins){
@@ -180,7 +190,7 @@ function showSheet(id){
 
 function nearestBetter(id, me, v){
   let best = null;
-  for(const {id: oid} of nearby){
+  for(const {id: oid} of shown()){
     if(oid === id) continue;
     const n = valueAt(oid, step);
     if(n === undefined || n < Math.max(4, v + 3)) continue;
@@ -208,12 +218,12 @@ function nearestBetter(id, me, v){
     L.circleMarker([here.la, here.lo], {radius:7, color:"#fff", weight:3,
       fillColor:"#1f6feb", fillOpacity:1}).addTo(map);
     nearby = pickNearby();
-    drawPins();
-    redraw();
     const at = new Date(Date.parse(data.at));
     const ago = Math.max(0, Math.round((Date.now() - at) / 60000));
-    document.getElementById("stamp").textContent =
-      `${ago}분 전 기준 · 내 주변 ${nearby.length}곳 · 10분마다 갱신`;
+    document.getElementById("stamp").innerHTML =
+      `${ago}분 전 기준 · 탈 수 있는 곳 <b id="count">0</b>곳 · 10분마다 갱신`;
+    drawPins(true);
+    redraw();
     document.getElementById("loading").remove();
   };
 
