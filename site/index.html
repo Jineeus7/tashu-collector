@@ -116,6 +116,11 @@ const STEPS = [0, 10, 20, 30, 60, 90, 120];   // 0 = 지금(실측)
 const RADIUS_M = 1000;                        // 걸어서 15분쯤
 const MAX_PINS = 30;
 
+// 타슈는 대전 밖으로 나가지 않는다. 지도도 그 밖으로는 못 움직이게 막는다.
+// 대여소 좌표가 실제로 들어가는 범위(위도 36.25~36.48, 경도 127.29~127.48)에
+// 여유를 조금 준 값이다.
+const AREA = L.latLngBounds([36.24, 127.27], [36.49, 127.50]);
+
 let data, stations, map, markers = {}, picked = null, step = 0;
 let here = null, hereLayer = null, nearby = [];
 
@@ -237,7 +242,7 @@ function searchLocal(q){
 async function searchRemote(q){
   // 대전 바깥 결과가 섞이지 않게 경계를 준다.
   const url = "https://nominatim.openstreetmap.org/search?format=json&limit=5"
-    + "&viewbox=127.25,36.50,127.56,36.18&bounded=1&q=" + encodeURIComponent(q);
+    + "&viewbox=127.27,36.49,127.50,36.24&bounded=1&q=" + encodeURIComponent(q);
   try{
     const r = await fetch(url, {headers:{"Accept-Language":"ko"}});
     return (await r.json()).map(x => ({
@@ -269,7 +274,8 @@ function showHits(list){
     fetch("predictions.json" + bust).then(r => r.json()),
   ]);
 
-  map = L.map("map", {zoomControl:false}).setView([36.351, 127.385], 13);
+  map = L.map("map", {zoomControl:false, maxBounds:AREA, maxBoundsViscosity:1,
+                      minZoom:11}).fitBounds(AREA);
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
     {attribution:"&copy; OpenStreetMap", maxZoom:19}).addTo(map);
   L.control.zoom({position:"bottomright"}).addTo(map);
@@ -303,7 +309,7 @@ function showHits(list){
     for(const id in markers) map.removeLayer(markers[id]);
     markers = {};
     if(hereLayer){ map.removeLayer(hereLayer); hereLayer = null; }
-    map.setView([36.351, 127.385], 13);
+    map.fitBounds(AREA);
   };
 })();
 </script>

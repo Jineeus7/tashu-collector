@@ -138,7 +138,7 @@ function searchLocal(q){
 // 대여소 이름에 없는 지명(은행동 등)은 지도 검색으로 넘긴다.
 async function searchRemote(q){
   const url = "https://nominatim.openstreetmap.org/search?format=json&limit=6"
-            + "&viewbox=127.25,36.50,127.56,36.18&bounded=1&q=" + encodeURIComponent(q);
+            + "&viewbox=127.27,36.49,127.50,36.24&bounded=1&q=" + encodeURIComponent(q);
   try{
     const r = await fetch(url, {headers:{"Accept-Language":"ko"}});
     return (await r.json()).map(x => ({
