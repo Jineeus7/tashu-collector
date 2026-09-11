@@ -140,7 +140,7 @@ jobs:
               # 매번 새 저장소를 만들어 강제 푸시하므로 브랜치에는 항상
               # 커밋 하나만 남고, 10분마다 올려도 저장소가 불어나지 않는다.
               pub=$(mktemp -d)
-              cp site/index.html site/*.json "$pub"/ 2>/dev/null
+              cp site/*.html site/*.json "$pub"/ 2>/dev/null
               ( cd "$pub" \
                 && git init -q \
                 && git config user.name "github-actions[bot]" \

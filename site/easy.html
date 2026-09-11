@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>타슈 자전거</title>
+<style>
+  :root{
+    --ink:#1a1a1a; --muted:#5f5a52; --line:#e3ded6; --bg:#faf8f4;
+    --ok:#137a43; --mid:#b4780f; --bad:#c22; --none:#777;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{
+    font-family:"Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+    background:var(--bg); color:var(--ink);
+    padding:20px 16px 40px; max-width:520px; margin:0 auto;
+  }
+  h1{font-size:30px; font-weight:800; margin-bottom:18px}
+
+  .when{display:flex; gap:10px; margin-bottom:22px}
+  .when button{
+    flex:1; font-family:inherit; font-size:21px; font-weight:700;
+    padding:18px 0; border:2px solid var(--line); border-radius:14px;
+    background:#fff; color:#555; cursor:pointer;
+  }
+  .when button.on{background:#1f6feb; border-color:#1f6feb; color:#fff}
+
+  .card{
+    background:#fff; border:2px solid var(--line); border-radius:16px;
+    padding:18px 20px; margin-bottom:14px;
+  }
+  .nm{font-size:23px; font-weight:800; line-height:1.3}
+  .walk{font-size:17px; color:#666; margin-top:4px}
+  .state{font-size:27px; font-weight:800; margin-top:12px; display:flex; align-items:center; gap:9px}
+  .dot{width:18px; height:18px; border-radius:50%; flex:none}
+  .ok{color:var(--ok)} .mid{color:var(--mid)} .bad{color:var(--bad)} .none{color:var(--none)}
+  .bg-ok{background:var(--ok)} .bg-mid{background:var(--mid)}
+  .bg-bad{background:var(--bad)} .bg-none{background:var(--none)}
+
+  .msg{font-size:19px; line-height:1.6; color:#444; padding:28px 4px; text-align:center}
+  .msg button{
+    font-family:inherit; font-size:20px; font-weight:700; margin-top:18px;
+    padding:16px 28px; border:none; border-radius:14px;
+    background:#1f6feb; color:#fff; cursor:pointer;
+  }
+  .foot{font-size:15px; color:#777; text-align:center; margin-top:20px}
+</style>
+</head>
+<body>
+  <h1>타슈 자전거</h1>
+
+  <div class="when">
+    <button id="b0" class="on">지금</button>
+    <button id="b1">1시간 뒤</button>
+  </div>
+
+  <div id="list"><div class="msg">불러오는 중…</div></div>
+  <div class="foot" id="foot"></div>
+
+<script>
+let data, stations, step = 0, here = null;
+
+// 숫자를 말로 바꾼다. 대수를 그대로 보여주면 "5대가 많은 건가" 를 다시
+// 판단해야 하므로, 판단까지 끝낸 문장으로 준다.
+function say(n){
+  if(n === 0)  return ["없어요", "none"];
+  if(n <= 2)   return [n + "대뿐이에요", "bad"];
+  if(n <= 5)   return [n + "대 있어요", "mid"];
+  return [n + "대 넉넉해요", "ok"];
+}
+
+const walkMin = m => Math.max(1, Math.round(m / 67));   // 분당 67m
+
+function dist(a, b, c, d){
+  const R = 6371000, r = Math.PI/180;
+  const x = (c-a)*r, y = (d-b)*r*Math.cos((a+c)/2*r);
+  return Math.round(R*Math.sqrt(x*x + y*y));
+}
+
+function render(){
+  document.getElementById("b0").className = step ? "" : "on";
+  document.getElementById("b1").className = step ? "on" : "";
+
+  const near = [];
+  for(const id in stations){
+    const n = step ? (data.pred[id]||[])[3] : data.stock[id];   // 3번째 = 60분
+    if(n === undefined) continue;
+    const s = stations[id];
+    near.push({nm:s.n, n, d:dist(here.la, here.lo, s.la, s.lo)});
+  }
+  near.sort((a,b) => a.d - b.d);
+
+  document.getElementById("list").innerHTML = near.slice(0,5).map(s => {
+    const [text, cls] = say(s.n);
+    return `<div class="card">
+      <div class="nm">${s.nm}</div>
+      <div class="walk">걸어서 ${walkMin(s.d)}분</div>
+      <div class="state ${cls}"><span class="dot bg-${cls}"></span>${text}</div>
+    </div>`;
+  }).join("");
+
+  document.getElementById("foot").textContent =
+    step ? "1시간 뒤 예상입니다" : "지금 있는 자전거입니다";
+}
+
+function askLocation(){
+  document.getElementById("list").innerHTML =
+    `<div class="msg">가까운 대여소를 찾으려면<br>위치를 알려주세요.
+       <br><button onclick="locate()">내 위치 찾기</button></div>`;
+}
+
+function locate(){
+  document.getElementById("list").innerHTML = `<div class="msg">위치를 찾는 중…</div>`;
+  navigator.geolocation.getCurrentPosition(
+    p => { here = {la:p.coords.latitude, lo:p.coords.longitude}; render(); },
+    () => { document.getElementById("list").innerHTML =
+      `<div class="msg">위치를 알 수 없어요.<br>휴대폰 설정에서 위치를 켜주세요.
+         <br><button onclick="locate()">다시 시도</button></div>`; },
+    {timeout:8000});
+}
+
+(async function(){
+  const bust = "?v=" + Date.now();
+  [stations, data] = await Promise.all([
+    fetch("stations.json" + bust).then(r => r.json()),
+    fetch("predictions.json" + bust).then(r => r.json()),
+  ]);
+  document.getElementById("b0").onclick = () => { step = 0; render(); };
+  document.getElementById("b1").onclick = () => { step = 1; render(); };
+  navigator.geolocation ? locate() : askLocation();
+})();
+</script>
+</body>
+</html>
