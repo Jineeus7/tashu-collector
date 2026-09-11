@@ -38,6 +38,21 @@
   }
   .ask b{font-size:17px;display:block;margin-bottom:3px}
   .ask span{font-size:12.5px;opacity:.9}
+  .ask input{
+    width:100%;margin-top:11px;padding:11px 13px;border:none;border-radius:10px;
+    font:15px inherit;color:var(--ink);
+  }
+  .hits{
+    list-style:none;margin-top:7px;background:#fff;border-radius:10px;
+    overflow:hidden;max-height:210px;overflow-y:auto;text-align:left;
+  }
+  .hits li{
+    padding:11px 13px;font-size:13.5px;color:var(--ink);cursor:pointer;
+    border-bottom:1px solid var(--line);
+  }
+  .hits li:last-child{border-bottom:none}
+  .hits li:active{background:#eef4ff}
+  .hits li small{display:block;color:var(--muted);font-size:11px;margin-top:1px}
 
   .sheet{
     position:absolute;left:10px;right:10px;bottom:10px;z-index:500;
@@ -72,7 +87,9 @@
 
 <div class="ask" id="ask">
   <b>어디서 타실 건가요?</b>
-  <span>지도에서 그 자리를 눌러주세요</span>
+  <span>지도를 누르거나 장소를 검색하세요</span>
+  <input id="q" type="search" placeholder="예) 충남대, 시청, 대전역" autocomplete="off">
+  <ul class="hits" id="hits" hidden></ul>
 </div>
 
 <div class="panel hidden" id="panel">
@@ -206,6 +223,45 @@ function showSheet(id){
   document.getElementById("sheet").classList.add("on");
 }
 
+// 대여소 이름에 동 이름과 랜드마크가 들어 있어, 외부 검색 없이도 웬만한
+// 장소는 여기서 찾힌다. 못 찾을 때만 OSM 검색으로 넘긴다.
+function searchLocal(q){
+  const out = [];
+  for(const id in stations){
+    if(stations[id].n && stations[id].n.includes(q)) out.push(id);
+    if(out.length >= 6) break;
+  }
+  return out.map(id => ({name: stations[id].n, la: stations[id].la, lo: stations[id].lo}));
+}
+
+async function searchRemote(q){
+  // 대전 바깥 결과가 섞이지 않게 경계를 준다.
+  const url = "https://nominatim.openstreetmap.org/search?format=json&limit=5"
+    + "&viewbox=127.25,36.50,127.56,36.18&bounded=1&q=" + encodeURIComponent(q);
+  try{
+    const r = await fetch(url, {headers:{"Accept-Language":"ko"}});
+    return (await r.json()).map(x => ({
+      name: x.display_name.split(",")[0],
+      sub: x.display_name.split(",").slice(1,3).join(",").trim(),
+      la: +x.lat, lo: +x.lon,
+    }));
+  }catch(e){ return []; }
+}
+
+function showHits(list){
+  const ul = document.getElementById("hits");
+  if(!list.length){ ul.hidden = true; return; }
+  ul.innerHTML = list.map((h,i) =>
+    `<li data-i="${i}">${h.name}${h.sub ? `<small>${h.sub}</small>` : ""}</li>`).join("");
+  ul.hidden = false;
+  [...ul.children].forEach(li => li.onclick = () => {
+    const h = list[+li.dataset.i];
+    ul.hidden = true;
+    document.getElementById("q").value = h.name;
+    pick(L.latLng(h.la, h.lo));
+  });
+}
+
 (async function(){
   const bust = "?v=" + Date.now();
   [stations, data] = await Promise.all([
@@ -219,11 +275,28 @@ function showSheet(id){
   L.control.zoom({position:"bottomright"}).addTo(map);
 
   map.on("click", e => pick(e.latlng));
+
+  // 검색창 클릭이 지도까지 내려가지 않게 막는다
+  const ask = document.getElementById("ask");
+  L.DomEvent.disableClickPropagation(ask);
+
+  let timer = null;
+  document.getElementById("q").addEventListener("input", e => {
+    const q = e.target.value.trim();
+    clearTimeout(timer);
+    if(q.length < 2){ document.getElementById("hits").hidden = true; return; }
+    const local = searchLocal(q);
+    if(local.length){ showHits(local); return; }
+    // 대여소 이름에 없으면 지도 검색으로. 한 글자마다 부르지 않도록 늦춘다.
+    timer = setTimeout(async () => showHits(await searchRemote(q)), 450);
+  });
   document.getElementById("slider").addEventListener("input", e => {
     step = +e.target.value; redraw();
   });
   document.getElementById("redo").onclick = () => {
     document.getElementById("ask").style.display = "";
+    document.getElementById("q").value = "";
+    document.getElementById("hits").hidden = true;
     document.getElementById("panel").classList.add("hidden");
     document.getElementById("sheet").classList.remove("on");
     document.getElementById("redo").classList.remove("on");
