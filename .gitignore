@@ -1,2 +1,5 @@
 __pycache__/
 *.pyc
+
+# 예측 결과는 gh-pages 로만 올린다
+site/*.json

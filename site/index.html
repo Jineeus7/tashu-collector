@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>타슈 예측</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root{
+    --ink:#17110b; --muted:#6d6257; --line:#e5ddd2;
+    --card:#fffdf9; --ok:#1a7f4b; --mid:#c8901a; --bad:#c9302c; --none:#8b8880;
+    --accent:#1f6feb;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{font:15px/1.5 "Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;color:var(--ink)}
+  #map{position:absolute;inset:0}
+
+  .panel{
+    position:absolute;top:10px;left:10px;right:10px;z-index:500;
+    background:var(--card);border-radius:14px;padding:12px 14px 10px;
+    box-shadow:0 2px 14px rgba(0,0,0,.18);max-width:460px;margin:0 auto;
+  }
+  .q{font-size:11.5px;color:var(--muted)}
+  .when{font-size:19px;font-weight:800;color:var(--accent);margin:2px 0 10px}
+  .when small{font-size:12px;color:var(--muted);font-weight:600}
+  input[type=range]{width:100%;accent-color:var(--accent);margin:0}
+  .ticks{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:2px}
+  .stamp{font-size:10.5px;color:var(--muted);margin-top:8px;padding-top:7px;border-top:1px solid var(--line)}
+
+  .sheet{
+    position:absolute;left:10px;right:10px;bottom:10px;z-index:500;
+    background:var(--card);border-radius:14px;padding:12px 14px;
+    box-shadow:0 -1px 14px rgba(0,0,0,.16);max-width:460px;margin:0 auto;
+    display:none;
+  }
+  .sheet.on{display:block}
+  .row{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+  .nm{font-size:15px;font-weight:800}
+  .sub{font-size:11px;color:var(--muted);margin-top:2px}
+  .cnt{font-size:26px;font-weight:800;line-height:1;text-align:right}
+  .tag{font-size:11px;font-weight:700;text-align:right;margin-top:3px}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:9px;padding-top:8px;border-top:1px solid var(--line)}
+  .ok{color:var(--ok)}.mid{color:var(--mid)}.bad{color:var(--bad)}.none{color:var(--none)}
+
+  .pin{
+    border-radius:50%;color:#fff;font-weight:800;display:flex;
+    align-items:center;justify-content:center;border:2px solid #fff;
+    box-shadow:0 1px 4px rgba(0,0,0,.35);
+  }
+  .loading{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:#f3f0ea;z-index:900;font-size:14px;color:var(--muted)
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="loading" id="loading">불러오는 중…</div>
+
+<div class="panel">
+  <div class="q">언제 타실 건가요?</div>
+  <div class="when" id="when">지금</div>
+  <input type="range" id="slider" min="0" max="6" step="1" value="0">
+  <div class="ticks"><span>지금</span><span>1시간</span><span>2시간</span></div>
+  <div class="stamp" id="stamp"></div>
+</div>
+
+<div class="sheet" id="sheet">
+  <div class="row">
+    <div><div class="nm" id="s-name"></div><div class="sub" id="s-sub"></div></div>
+    <div><div class="cnt" id="s-cnt"></div><div class="tag" id="s-tag"></div></div>
+  </div>
+  <div class="hint" id="s-hint"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const STEPS = [0, 10, 20, 30, 60, 90, 120];   // 0 = 지금(실측)
+let data, stations, markers = {}, picked = null, step = 0;
+
+const grade = n => n === 0 ? ["none","없음"] : n <= 2 ? ["bad","부족"]
+                  : n <= 5 ? ["mid","보통"] : ["ok","여유"];
+
+// 지금은 실측, 나머지는 예측. 배열 인덱스는 STEPS에서 1 밀린다.
+const valueAt = (id, s) => s === 0 ? data.stock[id] : (data.pred[id] || [])[s - 1];
+
+function icon(n){
+  const [cls] = grade(n);
+  const c = getComputedStyle(document.documentElement).getPropertyValue("--" + cls);
+  const big = n >= 10, size = big ? 32 : 28;
+  return L.divIcon({
+    className: "", iconSize: [size, size], iconAnchor: [size/2, size/2],
+    html: `<div class="pin" style="width:${size}px;height:${size}px;background:${c};font-size:${big?13:12}px">${n}</div>`
+  });
+}
+
+function redraw(){
+  const mins = STEPS[step];
+  document.getElementById("when").innerHTML = mins === 0 ? "지금"
+    : `${mins < 60 ? mins + "분" : (mins/60) + "시간"} 뒤 <small>${clock(mins)}</small>`;
+  for(const id in markers){
+    const v = valueAt(id, step);
+    if(v !== undefined) markers[id].setIcon(icon(v));
+  }
+  if(picked) showSheet(picked);
+}
+
+function clock(mins){
+  const t = new Date(Date.parse(data.at) + mins*60000);
+  return t.toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Seoul"});
+}
+
+function showSheet(id){
+  picked = id;
+  const v = valueAt(id, step), [cls, label] = grade(v);
+  document.getElementById("s-name").textContent = stations[id].n;
+  document.getElementById("s-sub").textContent =
+    step === 0 ? "지금 있는 자전거" : `${STEPS[step]}분 뒤 예상`;
+  const cnt = document.getElementById("s-cnt");
+  cnt.textContent = v; cnt.className = "cnt " + cls;
+  const tag = document.getElementById("s-tag");
+  tag.textContent = step === 0 ? label : label + " 예상"; tag.className = "tag " + cls;
+
+  // 부족하면 근처에서 나은 곳을 찾아준다. 없다고만 하면 갈 데가 없다.
+  let hint = "";
+  if(v <= 2){
+    const me = stations[id], alt = nearestBetter(id, me, v);
+    hint = alt ? `💡 ${alt.name}(${alt.dist}m)은 ${alt.n}대 예상`
+               : "근처에 여유 있는 대여소가 없습니다";
+  }
+  document.getElementById("s-hint").textContent = hint;
+  document.getElementById("s-hint").style.display = hint ? "" : "none";
+  document.getElementById("sheet").classList.add("on");
+}
+
+function nearestBetter(id, me, v){
+  let best = null;
+  for(const oid in stations){
+    if(oid === id) continue;
+    const n = valueAt(oid, step);
+    if(n === undefined || n < Math.max(4, v + 3)) continue;
+    const s = stations[oid];
+    const d = Math.round(L.latLng(me.la, me.lo).distanceTo(L.latLng(s.la, s.lo)));
+    if(d <= 800 && (!best || d < best.dist)) best = {name: s.n, dist: d, n};
+  }
+  return best;
+}
+
+(async function(){
+  const bust = "?v=" + Date.now();
+  [stations, data] = await Promise.all([
+    fetch("stations.json" + bust).then(r => r.json()),
+    fetch("predictions.json" + bust).then(r => r.json()),
+  ]);
+
+  const map = L.map("map", {zoomControl:false}).setView([36.351, 127.385], 14);
+  // CARTO 타일은 이제 키를 요구해 지도에 워터마크가 깔린다. OSM 기본 타일은
+  // 키 없이 쓸 수 있고 이 정도 트래픽은 이용약관 범위 안이다.
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    {attribution:"&copy; OpenStreetMap", maxZoom:19}).addTo(map);
+  L.control.zoom({position:"bottomright"}).addTo(map);
+
+  for(const id in stations){
+    const v = data.stock[id];
+    if(v === undefined) continue;
+    const s = stations[id];
+    markers[id] = L.marker([s.la, s.lo], {icon: icon(v)})
+      .addTo(map).on("click", () => showSheet(id));
+  }
+
+  const at = new Date(Date.parse(data.at));
+  const ago = Math.max(0, Math.round((Date.now() - at) / 60000));
+  document.getElementById("stamp").textContent =
+    `${ago}분 전 기준 · 대여소 ${Object.keys(data.stock).length}곳 · 10분마다 갱신`;
+
+  document.getElementById("slider").addEventListener("input", e => {
+    step = +e.target.value; redraw();
+  });
+  redraw();
+  document.getElementById("loading").remove();
+
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(p => {
+      const {latitude:la, longitude:lo} = p.coords;
+      L.circleMarker([la, lo], {radius:7,color:"#fff",weight:3,
+        fillColor:"#1f6feb",fillOpacity:1}).addTo(map);
+      map.setView([la, lo], 15);
+    }, () => {}, {timeout:5000});
+  }
+})();
+</script>
+</body>
+</html>

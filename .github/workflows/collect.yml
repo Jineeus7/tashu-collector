@@ -22,6 +22,8 @@ on:
 
 permissions:
   contents: write
+  # 예측 결과를 gh-pages 브랜치로 강제 푸시해 사이트를 갱신한다.
+  pages: write
   # 스스로 다음 실행을 dispatch 하려면 필요하다. GITHUB_TOKEN이 만든 이벤트는
   # 보통 새 워크플로 실행을 만들지 못하지만 workflow_dispatch와
   # repository_dispatch는 명시된 예외라, 별도 PAT 없이 사슬을 이을 수 있다.
@@ -88,10 +90,15 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: 예측에 필요한 패키지 설치
+        if: steps.guard.outputs.yield != 'true'
+        run: pip install --quiet numpy xgboost
+
       - name: 10분마다 수집
         if: steps.guard.outputs.yield != 'true'
         env:
           TASHU_API_TOKEN: ${{ secrets.TASHU_API_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -u
           git config user.name "github-actions[bot]"
@@ -125,6 +132,28 @@ jobs:
               continue
             fi
             git commit -q -m "Add data $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+            # 새 스냅샷이 올라갔으니 예측도 다시 만들어 사이트에 올린다.
+            # 실패해도 수집 루프는 계속 가야 하므로 || true 로 감싼다.
+            if python predict.py; then
+              # 본 저장소와 섞이지 않게 임시 폴더에서 gh-pages 를 만든다.
+              # 매번 새 저장소를 만들어 강제 푸시하므로 브랜치에는 항상
+              # 커밋 하나만 남고, 10분마다 올려도 저장소가 불어나지 않는다.
+              pub=$(mktemp -d)
+              cp site/index.html site/*.json "$pub"/ 2>/dev/null
+              ( cd "$pub" \
+                && git init -q \
+                && git config user.name "github-actions[bot]" \
+                && git config user.email "github-actions[bot]@users.noreply.github.com" \
+                && git add -A \
+                && git commit -q -m "predictions $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                && git push -qf \
+                     "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+                     HEAD:gh-pages ) || echo "::warning::사이트 갱신 실패"
+              rm -rf "$pub"
+            else
+              echo "::warning::예측 실패"
+            fi
 
             pushed=""
             for attempt in 1 2 3 4 5; do
