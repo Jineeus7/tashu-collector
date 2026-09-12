@@ -19,8 +19,9 @@
        gap:10px; margin-bottom:18px}
   h1{font-size:30px; font-weight:800}
   .swap{
-    flex:none; background:#fff; border:2px solid var(--line); border-radius:12px;
-    padding:10px 14px; font:700 16px inherit; color:var(--ink); text-decoration:none;
+    flex:none; width:50px; height:50px; border-radius:50%;
+    background:#fff; border:2px solid var(--line); color:var(--ink);
+    display:flex; align-items:center; justify-content:center;
   }
   .ask{font-size:21px; font-weight:700; margin-bottom:12px}
 
@@ -89,7 +90,13 @@
 <body>
   <div class="top">
     <h1>타슈 자전거</h1>
-    <a class="swap" href="index.html">지도로</a>
+    <a class="swap" href="index.html" title="지도로 보기" aria-label="지도로 보기">
+      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor"
+           stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M1.5 6.2 8.5 2.4l7 3.8 7-3.8v15.4l-7 3.8-7-3.8-7 3.8z"/>
+        <path d="M8.5 2.4v15.4M15.5 6.2v15.4"/>
+      </svg>
+    </a>
   </div>
 
   <!-- 1단계. 어디서 탈지부터 고른다 -->
