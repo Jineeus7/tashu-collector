@@ -9,6 +9,9 @@
   - 0 아래로만 자른다. name_cn 의 숫자는 상한이 아니다 — 관측값의 8%가 그
     숫자를 넘었고, 상한으로 쓰면 만석 근처 오차가 4배로 뛴다.
   - 예측 시점차(10~120분)를 피처로 넣어 모델 하나로 전 구간을 커버한다.
+  - 변화량이 0.8대에 못 미치면 움직이지 않는다. 확신 없이 흔들면 '그대로
+    유지'보다 적중률이 떨어졌고, 둔감폭을 두자 적중률은 그 수준으로
+    돌아오면서 큰 변화 감지는 3분의 1이 남았다.
 
 실행: python3 train.py <스냅샷 폴더>
 """
@@ -23,6 +26,7 @@ from datetime import datetime, timedelta
 import numpy as np
 
 HORIZONS = [1, 2, 3, 6, 9, 12]          # 10,20,30,60,90,120분 (1칸=10분)
+DEADBAND = 0.8                          # 이만큼 안 움직인다고 보면 그대로 둔다
 LAGS = [1, 3, 6, 144]                   # 10분, 30분, 1시간, 24시간 전
 MAXLAG = max(LAGS)
 OUT = os.path.dirname(os.path.abspath(__file__))
@@ -124,7 +128,9 @@ def main():
     Xtr, ytr, btr, _ = make_rows(grid, t0, 0, split, prof_mean, prof_std, 120, rng)
     Xva, yva, bva, hva = make_rows(grid, t0, split, n, prof_mean, prof_std, 400, rng)
     val = XGBRegressor(**params).fit(Xtr, ytr - btr)
-    pred = np.round(np.clip(bva + val.predict(Xva), 0, None))
+    dv = val.predict(Xva)
+    dv = np.where(np.abs(dv) < DEADBAND, 0.0, dv)
+    pred = np.round(np.clip(bva + dv, 0, None))
 
     print(f"\n검증 {Xva.shape[0]:,}건 — '탈 수 있나' 적중률")
     print(f"  {'시점':>6} {'그대로유지':>9} {'모델':>7}")

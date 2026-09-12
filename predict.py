@@ -11,6 +11,9 @@
 
 예측값은 반올림하고 0 아래로만 자른다. name_cn 의 숫자는 상한이 아니다 —
 관측값의 8%가 그 숫자를 넘는다.
+
+변화량이 둔감폭에 못 미치면 지금 값을 그대로 둔다. 모델이 아무 일도
+없는 순간까지 조금씩 흔들어서 '그대로 유지'보다 적중률이 낮았다.
 """
 
 import gzip
@@ -29,6 +32,7 @@ MODEL = os.path.join(HERE, "model")
 HORIZONS = [10, 20, 30, 60, 90, 120]     # 분
 LAGS = [1, 3, 6, 144]                    # 10분, 30분, 1시간, 24시간 전 (1칸=10분)
 NEED_SLOTS = max(LAGS) + 2
+DEADBAND = 0.8                           # 이만큼 안 움직인다고 보면 그대로 둔다
 KST = timezone(timedelta(hours=9))
 
 
@@ -111,6 +115,7 @@ def main():
         ]
         X = np.column_stack(cols).astype(np.float32)
         delta = booster.inplace_predict(X)
+        delta = np.where(np.abs(delta) < DEADBAND, 0.0, delta)
         preds[h] = np.maximum(np.round(cur + delta), 0)
 
     os.makedirs(SITE, exist_ok=True)
