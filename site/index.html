@@ -54,19 +54,22 @@
   .hits li:active{background:#eef4ff}
   .hits li small{display:block;color:var(--muted);font-size:11px;margin-top:1px}
 
-  /* 지도 위 아래쪽에 얹히는 것들. 한 줄로 쌓아 두면 시트가 열릴 때
-     버튼이 저절로 그 위로 밀려 올라가 서로 가리지 않는다. */
-  .bottom{
-    position:absolute;left:10px;right:10px;bottom:10px;z-index:500;
-    max-width:460px;margin:0 auto;display:flex;flex-direction:column;gap:8px;
-    pointer-events:none;                 /* 빈 자리로는 지도를 만질 수 있게 */
+  /* 버튼은 화면 왼쪽 아래에 붙여 둔다. 가운데로 모이는 시트에 묶어 두면
+     넓은 화면에서 시트를 따라 안쪽으로 밀려 들어간다. */
+  .fabs{
+    position:absolute;left:12px;bottom:14px;z-index:500;
+    display:flex;flex-direction:column;gap:8px;align-items:flex-start;
   }
-  .bottom button,.bottom .sheet{pointer-events:auto}
-  .fabs{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
 
   .sheet{
+    position:absolute;left:10px;right:10px;bottom:10px;z-index:500;
     background:var(--card);border-radius:14px;padding:12px 14px;
-    box-shadow:0 -1px 14px rgba(0,0,0,.16);display:none;
+    box-shadow:0 -1px 14px rgba(0,0,0,.16);max-width:460px;margin:0 auto;
+    display:none;
+  }
+  /* 좁은 화면에서만 시트가 왼쪽 끝까지 차서 버튼을 덮는다. 그때만 올린다. */
+  @media (max-width:540px){
+    body:has(.sheet.on) .fabs{bottom:132px}
   }
   .sheet.on{display:block}
   .row{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
@@ -133,33 +136,31 @@
   <div class="stamp" id="stamp"></div>
 </div>
 
-<div class="bottom">
-  <div class="fabs">
-    <div class="toast" id="toast" hidden></div>
-    <button class="fab redo" id="redo" title="다른 곳 고르기" aria-label="다른 곳 고르기">
-      <svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-           stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
-        <circle cx="10.5" cy="10.5" r="6.5"/>
-        <path d="M15.3 15.3 21 21"/>
-      </svg>
-    </button>
-    <button class="fab" id="gps" title="현위치" aria-label="현위치">
-      <svg viewBox="0 0 24 24" width="21" height="21" fill="none"
-           stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
-        <circle cx="12" cy="12" r="6.4"/>
-        <circle cx="12" cy="12" r="2.1" fill="currentColor" stroke="none"/>
-        <path d="M12 1.6v3.2M12 19.2v3.2M1.6 12h3.2M19.2 12h3.2"/>
-      </svg>
-    </button>
-  </div>
+<div class="fabs">
+  <div class="toast" id="toast" hidden></div>
+  <button class="fab redo" id="redo" title="다른 곳 고르기" aria-label="다른 곳 고르기">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none"
+         stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+      <circle cx="10.5" cy="10.5" r="6.5"/>
+      <path d="M15.3 15.3 21 21"/>
+    </svg>
+  </button>
+  <button class="fab" id="gps" title="현위치" aria-label="현위치">
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="none"
+         stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+      <circle cx="12" cy="12" r="6.4"/>
+      <circle cx="12" cy="12" r="2.1" fill="currentColor" stroke="none"/>
+      <path d="M12 1.6v3.2M12 19.2v3.2M1.6 12h3.2M19.2 12h3.2"/>
+    </svg>
+  </button>
+</div>
 
-  <div class="sheet" id="sheet">
-    <div class="row">
-      <div><div class="nm" id="s-name"></div><div class="sub" id="s-sub"></div></div>
-      <div><div class="cnt" id="s-cnt"></div><div class="tag" id="s-tag"></div></div>
-    </div>
-    <div class="hint" id="s-hint"></div>
+<div class="sheet" id="sheet">
+  <div class="row">
+    <div><div class="nm" id="s-name"></div><div class="sub" id="s-sub"></div></div>
+    <div><div class="cnt" id="s-cnt"></div><div class="tag" id="s-tag"></div></div>
   </div>
+  <div class="hint" id="s-hint"></div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
