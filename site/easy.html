@@ -15,7 +15,13 @@
     background:var(--bg); color:var(--ink);
     padding:20px 16px 40px; max-width:520px; margin:0 auto;
   }
-  h1{font-size:30px; font-weight:800; margin-bottom:18px}
+  .top{display:flex; align-items:center; justify-content:space-between;
+       gap:10px; margin-bottom:18px}
+  h1{font-size:30px; font-weight:800}
+  .swap{
+    flex:none; background:#fff; border:2px solid var(--line); border-radius:12px;
+    padding:10px 14px; font:700 16px inherit; color:var(--ink); text-decoration:none;
+  }
   .ask{font-size:21px; font-weight:700; margin-bottom:12px}
 
   input{
@@ -81,7 +87,10 @@
 </style>
 </head>
 <body>
-  <h1>타슈 자전거</h1>
+  <div class="top">
+    <h1>타슈 자전거</h1>
+    <a class="swap" href="index.html">지도로</a>
+  </div>
 
   <!-- 1단계. 어디서 탈지부터 고른다 -->
   <div id="find">

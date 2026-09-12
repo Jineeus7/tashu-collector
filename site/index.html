@@ -16,7 +16,7 @@
   #map{position:absolute;inset:0;cursor:crosshair}
 
   .panel{
-    position:absolute;top:10px;left:10px;right:10px;z-index:500;
+    position:absolute;top:10px;left:10px;right:76px;z-index:500;
     background:var(--card);border-radius:14px;padding:12px 14px 10px;
     box-shadow:0 2px 14px rgba(0,0,0,.18);max-width:460px;margin:0 auto;
   }
@@ -31,7 +31,7 @@
   /* 처음엔 어디서 탈지부터 정하게 한다. 위치를 자동으로 잡으면 "지금 내가 선
      곳"이 되는데, 실제로 궁금한 건 이따 갈 곳인 경우가 많다. */
   .ask{
-    position:absolute;top:14px;left:12px;right:12px;z-index:600;
+    position:absolute;top:14px;left:12px;right:76px;z-index:600;
     background:var(--accent);color:#fff;border-radius:14px;
     padding:15px 16px;text-align:center;max-width:460px;margin:0 auto;
     box-shadow:0 3px 16px rgba(0,0,0,.25);
@@ -98,6 +98,15 @@
   .redo.on{display:flex}
 
   /* 버튼에 글씨가 없으니 결과는 말풍선으로 말한다 */
+  /* 큰 글씨 화면으로 가는 문. 지도가 부담스러운 사람에게 목록판이
+     따로 있다는 걸 알리는 자리이기도 하다. */
+  .swap{
+    position:absolute;top:14px;right:12px;z-index:700;
+    background:var(--card);border:1px solid var(--line);border-radius:11px;
+    padding:8px 11px;font:700 12.5px inherit;color:var(--ink);
+    text-decoration:none;box-shadow:0 1px 8px rgba(0,0,0,.2);
+  }
+
   .toast{
     align-self:flex-start;background:rgba(23,17,11,.86);color:#fff;
     border-radius:9px;padding:7px 11px;font-size:12px;font-weight:600;
@@ -106,6 +115,8 @@
 </head>
 <body>
 <div id="map"></div>
+
+<a class="swap" href="easy.html">큰 글씨</a>
 
 <div class="ask" id="ask">
   <b>어디서 타실 건가요?</b>
