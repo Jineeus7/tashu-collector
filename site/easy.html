@@ -28,7 +28,12 @@
     width:100%; font-family:inherit; font-size:20px; font-weight:700;
     padding:17px 0; margin-top:10px; border:2px solid var(--line);
     border-radius:14px; background:#fff; color:var(--ink); cursor:pointer;
+    display:flex; align-items:center; justify-content:center; gap:9px;
   }
+
+  /* 지도 화면과 같은 아이콘을 쓴다. 다만 여기서는 글씨를 빼지 않는다 —
+     큰 글씨로 읽는 화면에서 그림만 남기면 뜻을 짐작해야 한다. */
+  .ic{width:1.1em; height:1.1em; flex:none}
 
   .hits{list-style:none; margin-top:12px}
   .hits li{
@@ -48,6 +53,7 @@
     flex:none; font-family:inherit; font-size:17px; font-weight:700;
     padding:12px 16px; border:none; border-radius:11px;
     background:var(--blue); color:#fff; cursor:pointer;
+    display:flex; align-items:center; gap:7px;
   }
 
   .when{display:flex; gap:10px; margin-bottom:22px}
@@ -81,7 +87,14 @@
   <div id="find">
     <div class="ask">어디서 타시나요?</div>
     <input id="q" type="search" placeholder="예) 충남대, 시청, 대전역" autocomplete="off">
-    <button class="gps" id="gps">지금 내가 있는 곳</button>
+    <button class="gps" id="gps">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2.1" stroke-linecap="round">
+        <circle cx="12" cy="12" r="6.4"/>
+        <circle cx="12" cy="12" r="2.1" fill="currentColor" stroke="none"/>
+        <path d="M12 1.6v3.2M12 19.2v3.2M1.6 12h3.2M19.2 12h3.2"/>
+      </svg>지금 내가 있는 곳
+    </button>
     <ul class="hits" id="hits"></ul>
     <div class="msg" id="tip">동네 이름이나 건물 이름을<br>두 글자만 적어도 찾아드려요.</div>
   </div>
@@ -90,7 +103,12 @@
   <div id="result" hidden>
     <div class="at">
       <div class="place" id="place"></div>
-      <button id="again">다시 찾기</button>
+      <button id="again">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.1" stroke-linecap="round">
+          <circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.3 15.3 21 21"/>
+        </svg>다시 찾기
+      </button>
     </div>
     <div class="when">
       <button id="b0" class="on">지금</button>
