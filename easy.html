@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>타슈 자전거</title>
+<style>
+  :root{
+    --ink:#1a1a1a; --muted:#5f5a52; --line:#e3ded6; --bg:#faf8f4;
+    --ok:#137a43; --mid:#b4780f; --bad:#c22; --blue:#1f6feb;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{
+    font-family:"Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+    background:var(--bg); color:var(--ink);
+    padding:20px 16px 40px; max-width:520px; margin:0 auto;
+  }
+  .top{display:flex; align-items:center; justify-content:space-between;
+       gap:10px; margin-bottom:18px}
+  h1{font-size:30px; font-weight:800}
+  .swap{
+    flex:none; width:50px; height:50px; border-radius:50%;
+    background:#fff; border:2px solid var(--line); color:var(--ink);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .ask{font-size:21px; font-weight:700; margin-bottom:12px}
+
+  input{
+    width:100%; font-family:inherit; font-size:21px; padding:17px 16px;
+    border:2px solid var(--line); border-radius:14px; background:#fff; color:var(--ink);
+  }
+  input::placeholder{color:#a49e94}
+
+  .gps{
+    width:100%; font-family:inherit; font-size:20px; font-weight:700;
+    padding:17px 0; margin-top:10px; border:2px solid var(--line);
+    border-radius:14px; background:#fff; color:var(--ink); cursor:pointer;
+    display:flex; align-items:center; justify-content:center; gap:9px;
+  }
+
+  /* 지도 화면과 같은 아이콘을 쓴다. 다만 여기서는 글씨를 빼지 않는다 —
+     큰 글씨로 읽는 화면에서 그림만 남기면 뜻을 짐작해야 한다. */
+  .ic{width:1.1em; height:1.1em; flex:none}
+
+  .hits{list-style:none; margin-top:12px}
+  .hits li{
+    background:#fff; border:2px solid var(--line); border-radius:14px;
+    padding:17px 18px; margin-bottom:10px; font-size:20px; font-weight:700;
+    line-height:1.35; cursor:pointer;
+  }
+  .hits li:active{background:#eef4ff}
+
+  .at{
+    display:flex; align-items:center; gap:10px; justify-content:space-between;
+    background:#fff; border:2px solid var(--line); border-radius:14px;
+    padding:14px 16px; margin-bottom:16px;
+  }
+  .at .place{font-size:20px; font-weight:800; line-height:1.3}
+  .at button{
+    flex:none; font-family:inherit; font-size:17px; font-weight:700;
+    padding:12px 16px; border:none; border-radius:11px;
+    background:var(--blue); color:#fff; cursor:pointer;
+    display:flex; align-items:center; gap:7px;
+  }
+
+  .when{display:flex; gap:10px; margin-bottom:22px}
+  .when button{
+    flex:1; font-family:inherit; font-size:21px; font-weight:700;
+    padding:18px 0; border:2px solid var(--line); border-radius:14px;
+    background:#fff; color:#555; cursor:pointer;
+  }
+  .when button.on{background:var(--blue); border-color:var(--blue); color:#fff}
+
+  .card{
+    background:#fff; border:2px solid var(--line); border-radius:16px;
+    padding:18px 20px; margin-bottom:14px;
+  }
+  .nm{font-size:23px; font-weight:800; line-height:1.3}
+  .walk{font-size:17px; color:#666; margin-top:4px}
+  .state{font-size:27px; font-weight:800; margin-top:12px; display:flex; align-items:center; gap:9px}
+  .dot{width:18px; height:18px; border-radius:50%; flex:none}
+  .ok{color:var(--ok)} .mid{color:var(--mid)} .bad{color:var(--bad)}
+  .bg-ok{background:var(--ok)} .bg-mid{background:var(--mid)} .bg-bad{background:var(--bad)}
+
+  .msg{font-size:19px; line-height:1.6; color:#666; padding:26px 4px; text-align:center}
+  .foot{font-size:15px; color:#777; text-align:center; margin-top:20px}
+  [hidden]{display:none !important}
+</style>
+</head>
+<body>
+  <div class="top">
+    <h1>타슈 자전거</h1>
+    <a class="swap" href="index.html" title="지도로 보기" aria-label="지도로 보기">
+      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor"
+           stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M1.5 6.2 8.5 2.4l7 3.8 7-3.8v15.4l-7 3.8-7-3.8-7 3.8z"/>
+        <path d="M8.5 2.4v15.4M15.5 6.2v15.4"/>
+      </svg>
+    </a>
+  </div>
+
+  <!-- 1단계. 어디서 탈지부터 고른다 -->
+  <div id="find">
+    <div class="ask">어디서 타시나요?</div>
+    <input id="q" type="search" placeholder="예) 충남대, 시청, 대전역" autocomplete="off">
+    <button class="gps" id="gps">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2.1" stroke-linecap="round">
+        <circle cx="12" cy="12" r="6.4"/>
+        <circle cx="12" cy="12" r="2.1" fill="currentColor" stroke="none"/>
+        <path d="M12 1.6v3.2M12 19.2v3.2M1.6 12h3.2M19.2 12h3.2"/>
+      </svg>지금 내가 있는 곳
+    </button>
+    <ul class="hits" id="hits"></ul>
+    <div class="msg" id="tip">동네 이름이나 건물 이름을<br>두 글자만 적어도 찾아드려요.</div>
+  </div>
+
+  <!-- 2단계. 그 주변 자전거 -->
+  <div id="result" hidden>
+    <div class="at">
+      <div class="place" id="place"></div>
+      <button id="again">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.1" stroke-linecap="round">
+          <circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.3 15.3 21 21"/>
+        </svg>다시 찾기
+      </button>
+    </div>
+    <div class="when">
+      <button id="b0" class="on">지금</button>
+      <button id="b1">1시간 뒤</button>
+    </div>
+    <div id="list"></div>
+    <div class="foot" id="foot"></div>
+  </div>
+
+<script>
+const RADIUS_M = 1000;          // 걸어서 15분쯤
+let data, stations, step = 0, here = null;
+
+// 숫자를 말로 바꾼다. 대수를 그대로 보여주면 "5대가 많은 건가" 를 다시
+// 판단해야 하므로, 판단까지 끝낸 문장으로 준다. (0대는 아예 안 띄운다)
+function say(n){
+  if(n <= 2) return [n + "대뿐이에요", "bad"];
+  if(n <= 5) return [n + "대 있어요", "mid"];
+  return [n + "대 넉넉해요", "ok"];
+}
+
+const walkMin = m => Math.max(1, Math.round(m / 67));   // 분당 67m
+
+function dist(a, b, c, d){
+  const R = 6371000, r = Math.PI/180;
+  const x = (c-a)*r, y = (d-b)*r*Math.cos((a+c)/2*r);
+  return Math.round(R*Math.sqrt(x*x + y*y));
+}
+
+const $ = id => document.getElementById(id);
+
+/* ── 1단계: 찾기 ── */
+
+// 대여소 이름이 곧 지명인 경우가 많아 여기부터 본다. 서버를 안 타서 즉시 뜬다.
+function searchLocal(q){
+  const out = [];
+  for(const id in stations){
+    const s = stations[id];
+    if(s.n && s.n.includes(q)) out.push({name:s.n, la:s.la, lo:s.lo});
+    if(out.length >= 6) break;
+  }
+  return out;
+}
+
+// 대여소 이름에 없는 지명(은행동 등)은 지도 검색으로 넘긴다.
+async function searchRemote(q){
+  const url = "https://nominatim.openstreetmap.org/search?format=json&limit=6"
+            + "&viewbox=127.27,36.49,127.50,36.24&bounded=1&q=" + encodeURIComponent(q);
+  try{
+    const r = await fetch(url, {headers:{"Accept-Language":"ko"}});
+    return (await r.json()).map(x => ({
+      name: x.display_name.split(",")[0], la: +x.lat, lo: +x.lon }));
+  }catch(e){ return []; }
+}
+
+function showHits(list, emptyMsg){
+  $("hits").innerHTML = list.map((h,i) => `<li data-i="${i}">${h.name}</li>`).join("");
+  [...$("hits").children].forEach(li =>
+    li.onclick = () => { const h = list[+li.dataset.i]; go(h.name, h.la, h.lo); });
+  $("tip").hidden = list.length > 0;
+  if(emptyMsg) $("tip").innerHTML = emptyMsg;
+}
+
+/* ── 2단계: 주변 자전거 ── */
+
+function go(name, la, lo){
+  here = {la, lo};
+  $("place").textContent = name;
+  $("find").hidden = true;
+  $("result").hidden = false;
+  render();
+}
+
+function render(){
+  $("b0").className = step ? "" : "on";
+  $("b1").className = step ? "on" : "";
+
+  const near = [];
+  for(const id in stations){
+    const n = step ? (data.pred[id]||[])[3] : data.stock[id];   // 3번째 = 60분
+    if(n === undefined || n === 0) continue;   // 없는 곳은 보여줄 이유가 없다
+    const s = stations[id];
+    const d = dist(here.la, here.lo, s.la, s.lo);
+    if(d > RADIUS_M) continue;
+    near.push({nm:s.n, n, d});
+  }
+  near.sort((a,b) => a.d - b.d);
+
+  if(!near.length){
+    $("list").innerHTML =
+      `<div class="msg">이 근처에 탈 수 있는<br>자전거가 없어요.</div>`;
+    $("foot").textContent = "";
+    return;
+  }
+
+  $("list").innerHTML = near.slice(0,5).map(s => {
+    const [text, cls] = say(s.n);
+    return `<div class="card">
+      <div class="nm">${s.nm}</div>
+      <div class="walk">걸어서 ${walkMin(s.d)}분</div>
+      <div class="state ${cls}"><span class="dot bg-${cls}"></span>${text}</div>
+    </div>`;
+  }).join("");
+
+  $("foot").textContent = step ? "1시간 뒤 예상입니다" : "지금 있는 자전거입니다";
+}
+
+(async function(){
+  const bust = "?v=" + Date.now();
+  [stations, data] = await Promise.all([
+    fetch("stations.json" + bust).then(r => r.json()),
+    fetch("predictions.json" + bust).then(r => r.json()),
+  ]);
+
+  let timer = null;
+  $("q").addEventListener("input", e => {
+    const q = e.target.value.trim();
+    clearTimeout(timer);
+    if(q.length < 2){ showHits([], "동네 이름이나 건물 이름을<br>두 글자만 적어도 찾아드려요."); return; }
+    const local = searchLocal(q);
+    if(local.length){ showHits(local); return; }
+    timer = setTimeout(async () => {
+      const hits = await searchRemote(q);
+      showHits(hits, hits.length ? "" : "그런 곳을 못 찾았어요.<br>다르게 적어보세요.");
+    }, 450);
+  });
+
+  $("gps").onclick = () => {
+    showHits([], "위치를 찾는 중…");
+    if(!navigator.geolocation){ showHits([], "위치를 알 수 없어요.<br>이름으로 찾아보세요."); return; }
+    navigator.geolocation.getCurrentPosition(
+      p => go("지금 있는 곳", p.coords.latitude, p.coords.longitude),
+      () => showHits([], "위치를 알 수 없어요.<br>이름으로 찾아보세요."),
+      {timeout:8000});
+  };
+
+  $("again").onclick = () => {
+    $("result").hidden = true;
+    $("find").hidden = false;
+    $("q").value = "";
+    showHits([], "동네 이름이나 건물 이름을<br>두 글자만 적어도 찾아드려요.");
+  };
+
+  $("b0").onclick = () => { step = 0; render(); };
+  $("b1").onclick = () => { step = 1; render(); };
+})();
+</script>
+</body>
+</html>

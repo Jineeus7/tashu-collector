@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>타슈 예측</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root{
+    --ink:#17110b; --muted:#6d6257; --line:#e5ddd2; --card:#fffdf9;
+    --ok:#1a7f4b; --mid:#c8901a; --bad:#c9302c; --accent:#1f6feb;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{font:15px/1.5 "Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;color:var(--ink)}
+  #map{position:absolute;inset:0;cursor:crosshair}
+
+  .panel{
+    position:absolute;top:10px;left:10px;right:62px;z-index:500;
+    background:var(--card);border-radius:14px;padding:12px 14px 10px;
+    box-shadow:0 2px 14px rgba(0,0,0,.18);max-width:460px;margin:0 auto;
+  }
+  .q{font-size:11.5px;color:var(--muted)}
+  .when{font-size:19px;font-weight:800;color:var(--accent);margin:2px 0 10px}
+  .when small{font-size:12px;color:var(--muted);font-weight:600}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  .ticks{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:2px}
+  .stamp{font-size:10.5px;color:var(--muted);margin-top:8px;padding-top:7px;border-top:1px solid var(--line)}
+  .panel.hidden{display:none}
+
+  /* 처음엔 어디서 탈지부터 정하게 한다. 위치를 자동으로 잡으면 "지금 내가 선
+     곳"이 되는데, 실제로 궁금한 건 이따 갈 곳인 경우가 많다. */
+  .ask{
+    position:absolute;top:14px;left:12px;right:62px;z-index:600;
+    background:var(--accent);color:#fff;border-radius:14px;
+    padding:15px 16px;text-align:center;max-width:460px;margin:0 auto;
+    box-shadow:0 3px 16px rgba(0,0,0,.25);
+  }
+  .ask b{font-size:17px;display:block;margin-bottom:3px}
+  .ask span{font-size:12.5px;opacity:.9}
+  .ask input{
+    width:100%;margin-top:11px;padding:11px 13px;border:none;border-radius:10px;
+    font:15px inherit;color:var(--ink);
+  }
+  .hits{
+    list-style:none;margin-top:7px;background:#fff;border-radius:10px;
+    overflow:hidden;max-height:210px;overflow-y:auto;text-align:left;
+  }
+  .hits li{
+    padding:11px 13px;font-size:13.5px;color:var(--ink);cursor:pointer;
+    border-bottom:1px solid var(--line);
+  }
+  .hits li:last-child{border-bottom:none}
+  .hits li:active{background:#eef4ff}
+  .hits li small{display:block;color:var(--muted);font-size:11px;margin-top:1px}
+
+  /* 버튼은 화면 왼쪽 아래에 붙여 둔다. 가운데로 모이는 시트에 묶어 두면
+     넓은 화면에서 시트를 따라 안쪽으로 밀려 들어간다. */
+  .fabs{
+    position:absolute;left:12px;bottom:14px;z-index:500;
+    display:flex;flex-direction:column;gap:8px;align-items:flex-start;
+  }
+
+  .sheet{
+    position:absolute;left:10px;right:10px;bottom:10px;z-index:500;
+    background:var(--card);border-radius:14px;padding:12px 14px;
+    box-shadow:0 -1px 14px rgba(0,0,0,.16);max-width:460px;margin:0 auto;
+    display:none;
+  }
+  /* 좁은 화면에서만 시트가 왼쪽 끝까지 차서 버튼을 덮는다. 그때만 올린다. */
+  @media (max-width:540px){
+    body:has(.sheet.on) .fabs{bottom:132px}
+  }
+  .sheet.on{display:block}
+  .row{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+  .nm{font-size:15px;font-weight:800}
+  .sub{font-size:11px;color:var(--muted);margin-top:2px}
+  .cnt{font-size:26px;font-weight:800;line-height:1;text-align:right}
+  .tag{font-size:11px;font-weight:700;text-align:right;margin-top:3px}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:9px;padding-top:8px;border-top:1px solid var(--line)}
+  .ok{color:var(--ok)}.mid{color:var(--mid)}.bad{color:var(--bad)}
+
+  .pin{
+    border-radius:50%;color:#fff;font-weight:800;display:flex;
+    align-items:center;justify-content:center;border:2px solid #fff;
+    box-shadow:0 1px 4px rgba(0,0,0,.35);
+  }
+  /* 지도 위에 얹는 버튼은 글씨 없이 아이콘만. 이모지는 기기마다 그림이
+     달라지므로 선으로 직접 그린다. */
+  .fab{
+    width:40px;height:40px;padding:0;border-radius:50%;
+    background:var(--card);border:1px solid var(--line);color:var(--ink);
+    box-shadow:0 1px 8px rgba(0,0,0,.18);cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .fab:active{background:#f1ece4}
+  .fab.busy{opacity:.55}
+  .fab.busy svg{animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .redo{display:none}
+  .redo.on{display:flex}
+
+  /* 버튼에 글씨가 없으니 결과는 말풍선으로 말한다 */
+  /* 큰 글씨 화면으로 가는 문. 지도가 부담스러운 사람에게 목록판이
+     따로 있다는 걸 알리는 자리이기도 하다. */
+  .swap{position:absolute;top:14px;right:12px;z-index:700}
+
+  .toast{
+    align-self:flex-start;background:rgba(23,17,11,.86);color:#fff;
+    border-radius:9px;padding:7px 11px;font-size:12px;font-weight:600;
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<a class="fab swap" href="easy.html" title="큰 글씨로 보기" aria-label="큰 글씨로 보기">
+  <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor"
+       stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4.6 19 12 4.6 19.4 19"/><path d="M7.6 13.4h8.8"/>
+  </svg>
+</a>
+
+<div class="ask" id="ask">
+  <b>어디서 타실 건가요?</b>
+  <span>지도를 누르거나 장소를 검색하세요</span>
+  <input id="q" type="search" placeholder="예) 충남대, 시청, 대전역" autocomplete="off">
+  <ul class="hits" id="hits" hidden></ul>
+</div>
+
+<div class="panel hidden" id="panel">
+  <div class="q">언제 타실 건가요?</div>
+  <div class="when" id="when">지금</div>
+  <input type="range" id="slider" min="0" max="6" step="1" value="0">
+  <div class="ticks"><span>지금</span><span>1시간</span><span>2시간</span></div>
+  <div class="stamp" id="stamp"></div>
+</div>
+
+<div class="fabs">
+  <div class="toast" id="toast" hidden></div>
+  <button class="fab redo" id="redo" title="다른 곳 고르기" aria-label="다른 곳 고르기">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none"
+         stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+      <circle cx="10.5" cy="10.5" r="6.5"/>
+      <path d="M15.3 15.3 21 21"/>
+    </svg>
+  </button>
+  <button class="fab" id="gps" title="현위치" aria-label="현위치">
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="none"
+         stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+      <circle cx="12" cy="12" r="6.4"/>
+      <circle cx="12" cy="12" r="2.1" fill="currentColor" stroke="none"/>
+      <path d="M12 1.6v3.2M12 19.2v3.2M1.6 12h3.2M19.2 12h3.2"/>
+    </svg>
+  </button>
+</div>
+
+<div class="sheet" id="sheet">
+  <div class="row">
+    <div><div class="nm" id="s-name"></div><div class="sub" id="s-sub"></div></div>
+    <div><div class="cnt" id="s-cnt"></div><div class="tag" id="s-tag"></div></div>
+  </div>
+  <div class="hint" id="s-hint"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const STEPS = [0, 10, 20, 30, 60, 90, 120];   // 0 = 지금(실측)
+const RADIUS_M = 1000;                        // 걸어서 15분쯤
+const MAX_PINS = 30;
+
+// 타슈는 대전 밖으로 나가지 않는다. 지도도 그 밖으로는 못 움직이게 막는다.
+// 대여소 좌표가 실제로 들어가는 범위(위도 36.25~36.48, 경도 127.29~127.48)에
+// 여유를 조금 준 값이다.
+const AREA = L.latLngBounds([36.24, 127.27], [36.49, 127.50]);
+
+let data, stations, map, markers = {}, picked = null, step = 0;
+let here = null, hereLayer = null, nearby = [];
+
+const grade = n => n <= 2 ? ["bad","부족"] : n <= 5 ? ["mid","보통"] : ["ok","여유"];
+const valueAt = (id, s) => s === 0 ? data.stock[id] : (data.pred[id] || [])[s - 1];
+const metersTo = s => map.distance([here.la, here.lo], [s.la, s.lo]);
+
+function icon(n){
+  const [cls] = grade(n);
+  const c = getComputedStyle(document.documentElement).getPropertyValue("--" + cls);
+  const big = n >= 10, size = big ? 32 : 28;
+  return L.divIcon({className:"", iconSize:[size,size], iconAnchor:[size/2,size/2],
+    html:`<div class="pin" style="width:${size}px;height:${size}px;background:${c};font-size:${big?13:12}px">${n}</div>`});
+}
+
+// 반경 안에서, 그 시점에 자전거가 있는 곳만. 0대는 타려는 사람에게
+// 선택지가 아니라 잡음이라 아예 그리지 않는다.
+function shown(){
+  return nearby.filter(({id}) => valueAt(id, step) > 0).slice(0, MAX_PINS);
+}
+
+function pick(latlng){
+  here = {la: latlng.lat, lo: latlng.lng};
+  if(hereLayer) map.removeLayer(hereLayer);
+  hereLayer = L.layerGroup([
+    L.circle([here.la, here.lo], {radius:RADIUS_M, color:"#1f6feb", weight:1.5,
+      fillColor:"#1f6feb", fillOpacity:.06}),
+    L.circleMarker([here.la, here.lo], {radius:7, color:"#fff", weight:3,
+      fillColor:"#1f6feb", fillOpacity:1}),
+  ]).addTo(map);
+
+  nearby = [];
+  for(const id in stations){
+    if(data.stock[id] === undefined) continue;
+    const d = metersTo(stations[id]);
+    if(d <= RADIUS_M) nearby.push({id, d});
+  }
+  nearby.sort((a,b) => a.d - b.d);
+
+  picked = null;
+  document.getElementById("sheet").classList.remove("on");
+  document.getElementById("ask").style.display = "none";
+  document.getElementById("panel").classList.remove("hidden");
+  document.getElementById("redo").classList.add("on");
+
+  // L.circle().getBounds() 는 지도에 붙기 전엔 좌표 변환을 못 해 터진다.
+  // toBounds 는 지도 없이도 계산되므로 이쪽을 쓴다.
+  map.fitBounds(L.latLng(here.la, here.lo).toBounds(RADIUS_M * 2.2));
+  redraw();
+}
+
+function redraw(){
+  const mins = STEPS[step];
+  document.getElementById("when").innerHTML = mins === 0 ? "지금"
+    : `${mins < 60 ? mins + "분" : (mins/60) + "시간"} 뒤 <small>${clock(mins)}</small>`;
+
+  for(const id in markers) map.removeLayer(markers[id]);
+  markers = {};
+  const list = shown();
+  for(const {id} of list){
+    const s = stations[id];
+    markers[id] = L.marker([s.la, s.lo], {icon: icon(valueAt(id, step))})
+      .addTo(map).on("click", ev => { L.DomEvent.stop(ev); showSheet(id); });
+  }
+
+  const at = new Date(Date.parse(data.at));
+  const ago = Math.max(0, Math.round((Date.now() - at) / 60000));
+  document.getElementById("stamp").textContent = list.length
+    ? `${ago}분 전 기준 · 반경 1km 안에 탈 수 있는 곳 ${list.length}곳`
+    : `${ago}분 전 기준 · 반경 1km 안에 탈 수 있는 자전거가 없습니다`;
+
+  // 보던 대여소가 이 시점엔 0이라 사라졌으면 카드를 닫는다
+  if(picked && !markers[picked]){
+    picked = null; document.getElementById("sheet").classList.remove("on");
+  } else if(picked) showSheet(picked);
+}
+
+function clock(mins){
+  const t = new Date(Date.parse(data.at) + mins*60000);
+  return t.toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Seoul"});
+}
+
+function showSheet(id){
+  picked = id;
+  const v = valueAt(id, step), [cls, label] = grade(v);
+  const walk = Math.max(1, Math.round(metersTo(stations[id]) / 67));
+  document.getElementById("s-name").textContent = stations[id].n;
+  document.getElementById("s-sub").textContent =
+    `걸어서 ${walk}분 · ` + (step === 0 ? "지금 있는 자전거" : `${STEPS[step]}분 뒤 예상`);
+  const cnt = document.getElementById("s-cnt");
+  cnt.textContent = v + "대"; cnt.className = "cnt " + cls;
+  const tag = document.getElementById("s-tag");
+  tag.textContent = step === 0 ? label : label + " 예상"; tag.className = "tag " + cls;
+
+  let hint = "";
+  if(v <= 2){
+    const alt = shown().map(({id:oid}) => ({oid, n:valueAt(oid, step)}))
+      .filter(x => x.oid !== id && x.n >= 5)
+      .sort((a,b) => metersTo(stations[a.oid]) - metersTo(stations[b.oid]))[0];
+    hint = alt ? `💡 ${stations[alt.oid].n}은 ${alt.n}대 예상`
+               : "반경 안에 여유 있는 곳이 없습니다";
+  }
+  const h = document.getElementById("s-hint");
+  h.textContent = hint; h.style.display = hint ? "" : "none";
+  document.getElementById("sheet").classList.add("on");
+}
+
+// 대여소 이름에 동 이름과 랜드마크가 들어 있어, 외부 검색 없이도 웬만한
+// 장소는 여기서 찾힌다. 못 찾을 때만 OSM 검색으로 넘긴다.
+function searchLocal(q){
+  const out = [];
+  for(const id in stations){
+    if(stations[id].n && stations[id].n.includes(q)) out.push(id);
+    if(out.length >= 6) break;
+  }
+  return out.map(id => ({name: stations[id].n, la: stations[id].la, lo: stations[id].lo}));
+}
+
+async function searchRemote(q){
+  // 대전 바깥 결과가 섞이지 않게 경계를 준다.
+  const url = "https://nominatim.openstreetmap.org/search?format=json&limit=5"
+    + "&viewbox=127.27,36.49,127.50,36.24&bounded=1&q=" + encodeURIComponent(q);
+  try{
+    const r = await fetch(url, {headers:{"Accept-Language":"ko"}});
+    return (await r.json()).map(x => ({
+      name: x.display_name.split(",")[0],
+      sub: x.display_name.split(",").slice(1,3).join(",").trim(),
+      la: +x.lat, lo: +x.lon,
+    }));
+  }catch(e){ return []; }
+}
+
+function showHits(list){
+  const ul = document.getElementById("hits");
+  if(!list.length){ ul.hidden = true; return; }
+  ul.innerHTML = list.map((h,i) =>
+    `<li data-i="${i}">${h.name}${h.sub ? `<small>${h.sub}</small>` : ""}</li>`).join("");
+  ul.hidden = false;
+  [...ul.children].forEach(li => li.onclick = () => {
+    const h = list[+li.dataset.i];
+    ul.hidden = true;
+    document.getElementById("q").value = h.name;
+    pick(L.latLng(h.la, h.lo));
+  });
+}
+
+(async function(){
+  const bust = "?v=" + Date.now();
+  [stations, data] = await Promise.all([
+    fetch("stations.json" + bust).then(r => r.json()),
+    fetch("predictions.json" + bust).then(r => r.json()),
+  ]);
+
+  map = L.map("map", {zoomControl:false, maxBounds:AREA, maxBoundsViscosity:1,
+                      minZoom:11}).fitBounds(AREA);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    {attribution:"&copy; OpenStreetMap", maxZoom:19}).addTo(map);
+  L.control.zoom({position:"bottomright"}).addTo(map);
+
+  map.on("click", e => pick(e.latlng));
+
+  // 검색창 클릭이 지도까지 내려가지 않게 막는다
+  const ask = document.getElementById("ask");
+  L.DomEvent.disableClickPropagation(ask);
+
+  let timer = null;
+  document.getElementById("q").addEventListener("input", e => {
+    const q = e.target.value.trim();
+    clearTimeout(timer);
+    if(q.length < 2){ document.getElementById("hits").hidden = true; return; }
+    const local = searchLocal(q);
+    if(local.length){ showHits(local); return; }
+    // 대여소 이름에 없으면 지도 검색으로. 한 글자마다 부르지 않도록 늦춘다.
+    timer = setTimeout(async () => showHits(await searchRemote(q)), 450);
+  });
+  document.getElementById("slider").addEventListener("input", e => {
+    step = +e.target.value; redraw();
+  });
+  // 현위치 버튼. 결과를 알림창으로 띄우면 눌러 없애야 하니 말풍선으로 말한다.
+  const gps = document.getElementById("gps"), toast = document.getElementById("toast");
+  let toastT = null;
+  const flash = msg => {
+    toast.textContent = msg; toast.hidden = false;
+    clearTimeout(toastT);
+    toastT = setTimeout(() => { toast.hidden = true; }, 2200);
+  };
+  gps.onclick = () => {
+    if(!navigator.geolocation){ flash("위치를 못 써요"); return; }
+    gps.classList.add("busy");
+    navigator.geolocation.getCurrentPosition(
+      p => {
+        gps.classList.remove("busy");
+        const ll = L.latLng(p.coords.latitude, p.coords.longitude);
+        // 대전 밖이면 찍어도 빈 화면이다. 그 사실을 먼저 알려준다.
+        if(!AREA.contains(ll)){ flash("대전 밖이에요"); return; }
+        toast.hidden = true;
+        document.getElementById("hits").hidden = true;
+        document.getElementById("q").value = "";
+        pick(ll);
+      },
+      () => { gps.classList.remove("busy"); flash("위치를 알 수 없어요"); },
+      {enableHighAccuracy:true, timeout:8000});
+  };
+
+  document.getElementById("redo").onclick = () => {
+    document.getElementById("ask").style.display = "";
+    document.getElementById("q").value = "";
+    document.getElementById("hits").hidden = true;
+    document.getElementById("panel").classList.add("hidden");
+    document.getElementById("sheet").classList.remove("on");
+    document.getElementById("redo").classList.remove("on");
+    for(const id in markers) map.removeLayer(markers[id]);
+    markers = {};
+    if(hereLayer){ map.removeLayer(hereLayer); hereLayer = null; }
+    map.fitBounds(AREA);
+  };
+})();
+</script>
+</body>
+</html>
