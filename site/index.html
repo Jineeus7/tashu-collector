@@ -16,7 +16,7 @@
   #map{position:absolute;inset:0;cursor:crosshair}
 
   .panel{
-    position:absolute;top:10px;left:10px;right:62px;z-index:500;
+    position:absolute;top:10px;left:62px;right:62px;z-index:500;
     background:var(--card);border-radius:14px;padding:12px 14px 10px;
     box-shadow:0 2px 14px rgba(0,0,0,.18);max-width:460px;margin:0 auto;
   }
@@ -97,7 +97,8 @@
   .fab.busy{opacity:.55}
   .fab.busy svg{animation:spin 1s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
-  .redo{display:none}
+  /* 다시 찾기는 왼쪽 위. 오른쪽 위 A 버튼과 짝으로 슬라이더 카드를 끼고 선다. */
+  .redo{position:absolute;top:14px;left:12px;z-index:700;display:none}
   .redo.on{display:flex}
 
   /* 버튼에 글씨가 없으니 결과는 말풍선으로 말한다 */
@@ -121,6 +122,14 @@
   </svg>
 </a>
 
+<button class="fab redo" id="redo" title="다른 곳 고르기" aria-label="다른 곳 고르기">
+  <svg viewBox="0 0 24 24" width="20" height="20" fill="none"
+       stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+    <circle cx="10.5" cy="10.5" r="6.5"/>
+    <path d="M15.3 15.3 21 21"/>
+  </svg>
+</button>
+
 <div class="ask" id="ask">
   <b>어디서 타실 건가요?</b>
   <span>지도를 누르거나 장소를 검색하세요</span>
@@ -138,13 +147,6 @@
 
 <div class="fabs">
   <div class="toast" id="toast" hidden></div>
-  <button class="fab redo" id="redo" title="다른 곳 고르기" aria-label="다른 곳 고르기">
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-         stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
-      <circle cx="10.5" cy="10.5" r="6.5"/>
-      <path d="M15.3 15.3 21 21"/>
-    </svg>
-  </button>
   <button class="fab" id="gps" title="현위치" aria-label="현위치">
     <svg viewBox="0 0 24 24" width="21" height="21" fill="none"
          stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
