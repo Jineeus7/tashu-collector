@@ -117,7 +117,7 @@
 
   <!-- 2단계. 그 주변 자전거 -->
   <div id="result" hidden>
-    <div class="at">
+    <div class="at" id="at">
       <div class="place" id="place"></div>
       <button id="again">
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -194,6 +194,7 @@ function go(name, la, lo){
   here = {la, lo};
   $("place").textContent = name;
   $("find").hidden = true;
+  $("at").hidden = false;
   $("result").hidden = false;
   render();
 }
@@ -261,11 +262,14 @@ function render(){
       {timeout:8000});
   };
 
+  // 목록은 새 곳을 고를 때까지 그대로 둔다. 처음 화면으로 통째로 돌아가면
+  // 보던 것을 잃는다 — 지도 화면에서 지도를 보던 자리에 두는 것과 같다.
   $("again").onclick = () => {
-    $("result").hidden = true;
+    $("at").hidden = true;
     $("find").hidden = false;
     $("q").value = "";
-    showHits([], "동네 이름이나 건물 이름을<br>두 글자만 적어도 찾아드려요.");
+    showHits([]);
+    $("tip").hidden = true;
   };
 
   $("b0").onclick = () => { step = 0; render(); };
