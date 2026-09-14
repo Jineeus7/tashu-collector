@@ -19,7 +19,7 @@ import gzip
 import json
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 
@@ -44,7 +44,10 @@ def load_snapshots(data_dir):
         ts = d.get("collected_at") or d.get("fetched_at")
         if not ts:
             continue
-        t = datetime.fromisoformat(ts.replace("Z", "+00:00")).replace(tzinfo=None)
+        # 수집기는 +09:00 을 붙여 저장한다. 시간대를 떼기 전에 UTC 로 바꿔야
+        # 아래에서 +9시간 한 값이 진짜 한국 시각이 된다 (predict.py 와 같게).
+        t = (datetime.fromisoformat(ts.replace("Z", "+00:00"))
+             .astimezone(timezone.utc).replace(tzinfo=None))
         rows = d["data"]["results"]
         snaps.append((t, rows))
     snaps.sort()
