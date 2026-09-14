@@ -390,7 +390,8 @@ function showHits(list){
     for(const id in markers) map.removeLayer(markers[id]);
     markers = {};
     if(hereLayer){ map.removeLayer(hereLayer); hereLayer = null; }
-    map.fitBounds(AREA);
+    // 지도는 보던 자리 그대로 둔다. 대전 전체로 물러나면 바로 옆을 다시
+    // 찍으려던 사람이 처음부터 확대해 들어가야 한다.
   };
 })();
 </script>
