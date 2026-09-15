@@ -29,6 +29,14 @@ permissions:
   # repository_dispatch는 명시된 예외라, 별도 PAT 없이 사슬을 이을 수 있다.
   actions: write
 
+env:
+  # 수집을 끝낼 시각. 요일 패턴을 볼 수 있게 10월 첫주(10/5 월 ~ 10/11 일)까지
+  # 모은다. 이 시각에 걸리는 슬롯부터는 수집하지 않으므로 마지막 스냅샷은
+  # 10/11 23:50 KST 다. 끝나면 워크플로를 스스로 꺼서 예비 예약도 더 깨어나지
+  # 않는다. 다시 모으려면 이 값을 미루고 Actions 화면에서 워크플로를 켠다.
+  # 러너는 UTC로 돌아가므로 UTC로 적는다. 10/12 00:00 KST 와 같다.
+  COLLECT_UNTIL: "2026-10-11T15:00:00Z"
+
 jobs:
   collect:
     runs-on: ubuntu-latest
@@ -37,14 +45,28 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      - name: 이미 도는 사슬이 있으면 양보
+      - name: 수집 기간이 끝났거나 이미 도는 사슬이 있으면 양보
         id: guard
-        # 사슬이 이어붙인 실행은 검사하지 않는다. 앞선 실행이 아직 in_progress인
-        # 채로 다음을 띄우기 때문에, 검사를 걸면 사슬이 스스로 끊긴다.
-        if: github.event.inputs.chained != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHAINED: ${{ github.event.inputs.chained }}
         run: |
+          # 사슬 끝에서 워크플로를 끄지 못했거나 사슬이 그 전에 끊긴 채 기간을
+          # 넘겼다면, 예약으로 깨어난 실행이 여기서 수집을 막고 대신 끈다.
+          if [ "$(date +%s)" -ge "$(date -d "$COLLECT_UNTIL" +%s)" ]; then
+            echo "수집 기간이 끝났다 ($COLLECT_UNTIL). 워크플로를 끈다"
+            gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/collect.yml/disable" \
+              || echo "::warning::워크플로를 끄지 못했다. 예약 실행은 계속 깨어나지만 수집은 하지 않는다"
+            echo "yield=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 사슬이 이어붙인 실행은 아래 검사를 하지 않는다. 앞선 실행이 아직
+          # in_progress인 채로 다음을 띄우기 때문에, 검사를 걸면 사슬이 스스로 끊긴다.
+          if [ "$CHAINED" = "true" ]; then
+            exit 0
+          fi
+
           # 아직 끝나지 않은 다른 실행을 세는 helper.
           alive() {
             local total=0 n
@@ -107,6 +129,9 @@ jobs:
           # 다음 실행에 자리를 넘길 시각. 6시간 상한에서 30분을 남겨,
           # 마지막 수집과 사슬 잇기가 잘려나가지 않게 한다.
           deadline=$(( $(date +%s) + 5 * 3600 + 30 * 60 ))
+          # 수집 기간이 그보다 먼저 끝나면 거기서 멈춘다.
+          stop_at=$(date -d "$COLLECT_UNTIL" +%s)
+          [ "$stop_at" -lt "$deadline" ] && deadline=$stop_at
           collected=0
           missed=0
 
@@ -181,6 +206,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # 다음 실행이 첫 슬롯을 잡기도 전에 기간이 끝난다면 띄울 이유가 없다.
+          # 루프가 물러나는 규칙과 같게 "다음 10분 경계"로 판단한다. 기간 끝
+          # 직전에 시작한 마지막 실행은 몇 분 만에 끝나므로, 아래 폭주 검사보다
+          # 먼저 봐야 폭주로 오인하지 않고 여기서 워크플로를 끈다.
+          next=$(( ($(date +%s) / 600 + 1) * 600 ))
+          if [ "$next" -ge "$(date -d "$COLLECT_UNTIL" +%s)" ]; then
+            echo "수집 기간이 끝났다 ($COLLECT_UNTIL). 사슬을 잇지 않고 워크플로를 끈다"
+            gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/collect.yml/disable" \
+              || echo "::warning::워크플로를 끄지 못했다. 예약으로 깨어난 실행이 다시 끈다"
+            exit 0
+          fi
+
           # 부팅 직후 죽는 실행이 곧바로 다음을 띄우면 실행이 폭주한다.
           # 정상 사슬은 다섯 시간 넘게 살아 있으므로, 너무 빨리 끝난 실행은
           # 여기서 끊고 복구를 schedule에 넘긴다.
@@ -190,5 +227,6 @@ jobs:
             echo "::warning::${elapsed}초 만에 끝났다. 폭주를 막기 위해 사슬을 잇지 않는다. schedule이 다시 붙인다."
             exit 0
           fi
+
           gh workflow run collect.yml --ref "$GITHUB_REF_NAME" -f chained=true
           echo "다음 실행을 띄웠다"
