@@ -14,11 +14,16 @@
 
 변화량이 둔감폭에 못 미치면 지금 값을 그대로 둔다. 모델이 아무 일도
 없는 순간까지 조금씩 흔들어서 '그대로 유지'보다 적중률이 낮았다.
+
+대여 이력의 평소 흐름은 model/flow.py 로 계산한다. 학습과 같은 함수를 써야
+피처가 어긋나지 않는다. 오차범위표(calibration.json)는 그대로 실어 보내
+사이트가 예측마다 '실제로는 몇 대였나'를 붙이게 한다.
 """
 
 import gzip
 import json
 import os
+import sys
 from datetime import datetime, timedelta, timezone
 
 import numpy as np
@@ -28,6 +33,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.environ.get("TASHU_DATA", os.path.join(HERE, "data"))
 SITE = os.path.join(HERE, "site")
 MODEL = os.path.join(HERE, "model")
+sys.path.insert(0, MODEL)
+import flow  # noqa: E402
 
 HORIZONS = [10, 20, 30, 60, 90, 120]     # 분
 LAGS = [1, 3, 6, 144]                    # 10분, 30분, 1시간, 24시간 전 (1칸=10분)
@@ -102,6 +109,8 @@ def main():
 
     booster = xgb.Booster()
     booster.load_model(os.path.join(MODEL, "model.json"))
+    fl_out, fl_in = flow.load(os.path.join(MODEL, "flow_profile.npz"), sids)
+    every = np.arange(len(sids))
 
     preds = {}
     for h in HORIZONS:
@@ -112,7 +121,7 @@ def main():
             np.full(len(sids), float(dow >= 5)),
             np.full(len(sids), float(h)),
             pmean, pstd,
-        ]
+        ] + flow.cols(kst_now, h // 10, every, fl_out, fl_in)
         X = np.column_stack(cols).astype(np.float32)
         delta = booster.inplace_predict(X)
         delta = np.where(np.abs(delta) < DEADBAND, 0.0, delta)
@@ -131,9 +140,13 @@ def main():
     with open(os.path.join(SITE, "stations.json"), "w") as fh:
         json.dump(stations, fh, ensure_ascii=False, separators=(",", ":"))
 
+    cal_path = os.path.join(MODEL, "calibration.json")
+    cal = json.load(open(cal_path)) if os.path.exists(cal_path) else None
+
     out = {
         "at": latest_t.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "horizons": HORIZONS,
+        "cal": cal,
         "stock": {s: int(cur[i]) for i, s in enumerate(sids) if not np.isnan(cur[i])},
         "pred": {s: [int(preds[h][i]) for h in HORIZONS]
                  for i, s in enumerate(sids) if not np.isnan(cur[i])},

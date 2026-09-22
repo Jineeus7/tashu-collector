@@ -199,6 +199,16 @@ function go(name, la, lo){
   render();
 }
 
+// 1시간 뒤 예측이 지난 기간에 실제로 몇 대였는지 (10번 중 8번이 이 안).
+function spread(v){
+  const c = data.cal;
+  if(!c) return null;
+  const e = c.edges;
+  let b = e.length - 1;
+  for(let i = 0; i < e.length - 1; i++) if(v < e[i + 1]){ b = i; break; }
+  return (c.by_horizon["60"] || [])[b] || null;
+}
+
 function render(){
   $("b0").className = step ? "" : "on";
   $("b1").className = step ? "on" : "";
@@ -223,10 +233,15 @@ function render(){
 
   $("list").innerHTML = near.slice(0,5).map(s => {
     const [text, cls] = say(s.n);
+    // 예측일 때만, 그리고 범위가 한 숫자로 좁혀지지 않을 때만 덧붙인다
+    const r = step ? spread(s.n) : null;
+    const more = r && r[0] !== r[1]
+      ? `<div class="walk">실제로는 ${r[0]}~${r[1]}대일 수 있어요</div>` : "";
     return `<div class="card">
       <div class="nm">${s.nm}</div>
       <div class="walk">걸어서 ${walkMin(s.d)}분</div>
       <div class="state ${cls}"><span class="dot bg-${cls}"></span>${text}</div>
+      ${more}
     </div>`;
   }).join("");
 

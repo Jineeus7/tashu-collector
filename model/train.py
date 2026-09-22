@@ -12,6 +12,11 @@
   - 변화량이 0.8대에 못 미치면 움직이지 않는다. 확신 없이 흔들면 '그대로
     유지'보다 적중률이 떨어졌고, 둔감폭을 두자 적중률은 그 수준으로
     돌아오면서 큰 변화 감지는 3분의 1이 남았다.
+  - 대여 이력 20개월의 '평소 흐름'(flow.py)을 피처로 넣는다. 재고만으로는
+    그대로 유지와 같았고, 흐름을 넣자 2시간 뒤 적중률이 처음으로 확실하게
+    앞섰다. 오답의 대부분인 0~2대 대여소에서 누가 빌려 갈지를 알려준다.
+  - 검증 구간의 예측 성공·실패로 '이 예측값이면 실제로는 몇 대였나'를
+    모아 calibration.json 에 남긴다. 사이트가 예측마다 오차범위를 붙인다.
 
 실행: python3 train.py <스냅샷 폴더>
 """
@@ -25,11 +30,16 @@ from datetime import datetime, timedelta, timezone
 
 import numpy as np
 
+import flow
+
 HORIZONS = [1, 2, 3, 6, 9, 12]          # 10,20,30,60,90,120분 (1칸=10분)
 DEADBAND = 0.8                          # 이만큼 안 움직인다고 보면 그대로 둔다
 LAGS = [1, 3, 6, 144]                   # 10분, 30분, 1시간, 24시간 전
 MAXLAG = max(LAGS)
 OUT = os.path.dirname(os.path.abspath(__file__))
+FLOW = os.path.join(OUT, "flow_profile.npz")
+OK_AT = 2                               # 이 대수 이상이면 '확실히 탈 수 있다'
+EDGES = [0, 1, 2, 3, 4, 5, 6, 11, 21]    # 오차범위표의 예측값 구간 경계
 
 
 def load_snapshots(data_dir):
@@ -66,7 +76,7 @@ def build_grid(snaps):
     return grid, sids, t0
 
 
-def make_rows(grid, t0, lo, hi, prof_mean, prof_std, cap_rows, rng):
+def make_rows(grid, t0, lo, hi, prof_mean, prof_std, fl_out, fl_in, cap_rows, rng):
     """(대여소, 시각, 예측시점차) 조합을 피처 행렬로 편다."""
     n = grid.shape[0]
     kst = [t0 + timedelta(minutes=10 * k, hours=9) for k in range(n)]
@@ -95,6 +105,7 @@ def make_rows(grid, t0, lo, hi, prof_mean, prof_std, cap_rows, rng):
                 prof_mean[si],
                 prof_std[si],
             ]
+            cols += flow.cols(kst[t], h, si, fl_out, fl_in)
             X.append(np.column_stack(cols))
             y.append(nxt[si])
             base.append(cur[si])
@@ -104,7 +115,29 @@ def make_rows(grid, t0, lo, hi, prof_mean, prof_std, cap_rows, rng):
 
 
 FEATURES = (["현재재고"] + [f"{m}전차이" for m in ("10분", "30분", "1시간", "24시간")]
-            + ["시각sin", "시각cos", "요일", "주말", "예측시점차", "평소평균", "평소변동"])
+            + ["시각sin", "시각cos", "요일", "주말", "예측시점차", "평소평균", "평소변동"]
+            + flow.NAMES)
+
+
+def calibration(pred, actual, hors):
+    """예측값 구간마다 실제값이 어디에 떨어졌는지. 검증 구간의 성공·실패 기록이다.
+    [10% 지점, 90% 지점, 2대 이상이었던 비율] — 10번 중 8번이 앞의 두 수 사이다.
+    표본이 적은 칸은 믿을 수 없으니 비워 둔다."""
+    table = {}
+    for hm in sorted(set(hors.tolist())):
+        row = []
+        for b in range(len(EDGES)):
+            lo = EDGES[b]
+            hi = EDGES[b + 1] if b + 1 < len(EDGES) else np.inf
+            m = (hors == hm) & (pred >= lo) & (pred < hi)
+            if m.sum() < 200:
+                row.append(None)
+                continue
+            a = actual[m]
+            row.append([int(np.percentile(a, 10)), int(np.percentile(a, 90)),
+                        round(float((a >= OK_AT).mean()), 2)])
+        table[str(int(hm))] = row
+    return {"edges": EDGES, "ok_at": OK_AT, "by_horizon": table}
 
 
 def main():
@@ -120,6 +153,8 @@ def main():
 
     prof_mean = np.nan_to_num(np.nanmean(grid, axis=0))
     prof_std = np.nan_to_num(np.nanstd(grid, axis=0))
+    fl_out, fl_in = flow.load(FLOW, sids)
+    print(f"대여 이력 흐름이 붙은 대여소 {int((~np.isnan(fl_out[0, 0])).sum())}곳")
 
     from xgboost import XGBRegressor
     params = dict(n_estimators=400, max_depth=6, learning_rate=0.06,
@@ -128,27 +163,41 @@ def main():
 
     # 1) 뒤쪽을 떼어 정확도를 잰다
     split = int(n * 0.8)
-    Xtr, ytr, btr, _ = make_rows(grid, t0, 0, split, prof_mean, prof_std, 120, rng)
-    Xva, yva, bva, hva = make_rows(grid, t0, split, n, prof_mean, prof_std, 400, rng)
+    Xtr, ytr, btr, _ = make_rows(grid, t0, 0, split, prof_mean, prof_std, fl_out, fl_in, 120, rng)
+    Xva, yva, bva, hva = make_rows(grid, t0, split, n, prof_mean, prof_std, fl_out, fl_in, 400, rng)
     val = XGBRegressor(**params).fit(Xtr, ytr - btr)
     dv = val.predict(Xva)
     dv = np.where(np.abs(dv) < DEADBAND, 0.0, dv)
     pred = np.round(np.clip(bva + dv, 0, None))
 
-    print(f"\n검증 {Xva.shape[0]:,}건 — '탈 수 있나' 적중률")
-    print(f"  {'시점':>6} {'그대로유지':>9} {'모델':>7}")
+    print(f"\n검증 {Xva.shape[0]:,}건 — 적중률 (그대로 유지 → 모델)")
+    print(f"  {'시점':>6} {'1대 이상':>14} {OK_AT}대 이상{'':>6} {'±1대 이내':>12}")
     for h in (10, 30, 60, 120):
-        s = hva == h
-        hit = lambda v: ((v[s] >= 1) == (yva[s] >= 1)).mean()
-        print(f"  {h:5d}분 {hit(bva):8.0%} {hit(pred):7.0%}")
+        m = hva == h
+        hit = lambda v, k: ((v[m] >= k) == (yva[m] >= k)).mean()
+        near = lambda v: (np.abs(v[m] - yva[m]) <= 1).mean()
+        print(f"  {h:5d}분 {hit(bva,1):6.0%} → {hit(pred,1):4.0%}"
+              f"   {hit(bva,OK_AT):6.0%} → {hit(pred,OK_AT):4.0%}"
+              f"   {near(bva):6.0%} → {near(pred):4.0%}")
 
     chg = (hva == 60) & (np.abs(yva - bva) >= 3)
     det = ((np.sign(pred[chg] - bva[chg]) == np.sign(yva[chg] - bva[chg]))
            & (np.abs(pred[chg] - bva[chg]) >= 1)).mean()
     print(f"  1시간 뒤 큰 변화 감지율: {det:.0%}")
 
+    # 검증 구간에서 모델이 실제로 얼마나 빗나갔는지를 그대로 남긴다.
+    # 전체로 다시 학습한 모델로 만들면 자기가 본 답을 채점하는 셈이라
+    # 오차범위가 실제보다 좁게 나온다.
+    cal = calibration(pred, yva, hva)
+    with open(os.path.join(OUT, "calibration.json"), "w") as fh:
+        json.dump(cal, fh, separators=(",", ":"))
+    one = cal["by_horizon"]["120"][1]
+    if one:
+        print(f"  2시간 뒤 '1대' 예측 → 실제 {one[0]}~{one[1]}대, "
+              f"{OK_AT}대 이상이었던 비율 {one[2]:.0%}")
+
     # 2) 전체 구간으로 다시 학습해 배포용 모델을 만든다
-    Xall, yall, ball, _ = make_rows(grid, t0, 0, n, prof_mean, prof_std, 120, rng)
+    Xall, yall, ball, _ = make_rows(grid, t0, 0, n, prof_mean, prof_std, fl_out, fl_in, 120, rng)
     final = XGBRegressor(**params).fit(Xall, yall - ball)
 
     final.save_model(os.path.join(OUT, "model.json"))
@@ -162,7 +211,7 @@ def main():
                    "trained_rows": int(Xall.shape[0]),
                    "trained_at": datetime.now().isoformat(timespec="seconds")},
                   fh, ensure_ascii=False, indent=2)
-    print(f"\n학습 {Xall.shape[0]:,}건 → model.json / station_stats.json 저장")
+    print(f"\n학습 {Xall.shape[0]:,}건 → model.json / station_stats.json / calibration.json 저장")
 
 
 if __name__ == "__main__":
