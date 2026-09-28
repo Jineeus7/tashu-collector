@@ -15,6 +15,8 @@
   - 대여 이력 20개월의 '평소 흐름'(flow.py)을 피처로 넣는다. 재고만으로는
     그대로 유지와 같았고, 흐름을 넣자 2시간 뒤 적중률이 처음으로 확실하게
     앞섰다. 오답의 대부분인 0~2대 대여소에서 누가 빌려 갈지를 알려준다.
+  - 공휴일은 일요일로 본다 (flow.weekday). 추석 당일 오차가 35% 커졌던 걸
+    대부분 되돌렸다.
   - 검증 구간의 예측 성공·실패로 '이 예측값이면 실제로는 몇 대였나'를
     모아 calibration.json 에 남긴다. 사이트가 예측마다 오차범위를 붙인다.
 
@@ -93,7 +95,7 @@ def make_rows(grid, t0, lo, hi, prof_mean, prof_std, fl_out, fl_in, cap_rows, rn
             if si.size > cap_rows:
                 si = rng.choice(si, cap_rows, replace=False)
             hour = kst[t].hour + kst[t].minute / 60
-            dow = kst[t].weekday()
+            dow = flow.weekday(kst[t])
             cols = [cur[si]]
             cols += [cur[si] - grid[t - lg][si] for lg in LAGS]
             cols += [

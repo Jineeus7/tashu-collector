@@ -11,7 +11,7 @@
 프로필(flow_profile.npz)은 flow_profile.py 로 만든다.
 """
 
-from datetime import timedelta
+from datetime import date, timedelta
 
 import numpy as np
 
@@ -34,8 +34,28 @@ def load(path, sids):
     return pick(z["out"]), pick(z["inn"])
 
 
+# 공휴일은 일요일로 본다. 모델에 공휴일 개념이 없어 추석을 평소 목·금으로
+# 보고 출퇴근 흐름을 예측했고, 추석 당일 2시간 뒤 오차가 그대로 유지보다
+# 35% 컸다. 일요일로 바꿔 넣자 연휴 손해의 약 4분의 3이 사라졌고, 평일·
+# 주말 성능은 그대로였다. 명절 당일은 일요일보다도 조용해 여전히 그대로
+# 유지보다 조금 못하다.
+# 해마다 새 공휴일(대체공휴일 포함)을 여기에 더해야 한다.
+HOLIDAYS = {
+    date(2026, 1, 1), date(2026, 2, 16), date(2026, 2, 17), date(2026, 2, 18),
+    date(2026, 3, 2), date(2026, 5, 5), date(2026, 5, 25), date(2026, 6, 3),
+    date(2026, 8, 17), date(2026, 9, 24), date(2026, 9, 25), date(2026, 9, 26),
+    date(2026, 10, 5), date(2026, 10, 9), date(2026, 12, 25),
+}
+
+
+def weekday(d):
+    """요일(월=0 … 일=6). 공휴일이면 일요일."""
+    return 6 if d.date() in HOLIDAYS else d.weekday()
+
+
 def _day(d, n_day):
-    return d.weekday() if n_day == 7 else int(d.weekday() >= 5)
+    w = weekday(d)
+    return w if n_day == 7 else int(w >= 5)
 
 
 def cols(now, h_slots, si, out, inn):

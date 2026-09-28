@@ -97,7 +97,7 @@ def main():
 
     kst_now = latest_t.replace(tzinfo=timezone.utc).astimezone(KST)
     hour = kst_now.hour + kst_now.minute / 60
-    dow = kst_now.weekday()
+    dow = flow.weekday(kst_now)   # 공휴일이면 일요일
 
     # 과거 값이 비면 변화량을 0으로 둔다. 결측 자체를 모델에 넘기는 것보다
     # "변화 없었다"로 보는 편이 예측이 튀지 않는다.
