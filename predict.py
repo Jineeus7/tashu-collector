@@ -38,14 +38,15 @@ import flow  # noqa: E402
 
 HORIZONS = [10, 20, 30, 60, 90, 120]     # 분
 LAGS = [1, 3, 6, 144]                    # 10분, 30분, 1시간, 24시간 전 (1칸=10분)
-NEED_SLOTS = max(LAGS) + 2
-DEADBAND = 0.8                           # 이만큼 안 움직인다고 보면 그대로 둔다
+# 지난주 같은 시각까지 본다(flow.history_cols). 7일 + 예측 시점 여유.
+NEED_SLOTS = 7 * 144 + 14
+DEADBAND = 0.7                           # 이만큼 안 움직인다고 보면 그대로 둔다
 KST = timezone(timedelta(hours=9))
 
 
 def recent_files(count):
-    """최근 스냅샷 파일을 시간순으로. 하루치가 144개라 넉넉히 훑는다."""
-    days = sorted(os.listdir(DATA))[-3:]
+    """최근 스냅샷 파일을 시간순으로. 지난주 같은 시각까지 필요해 9일치를 훑는다."""
+    days = sorted(os.listdir(DATA))[-9:]
     files = []
     for d in days:
         p = os.path.join(DATA, d)
@@ -57,7 +58,7 @@ def recent_files(count):
 
 def load_recent():
     snaps = []
-    for f in recent_files(NEED_SLOTS * 2):
+    for f in recent_files(NEED_SLOTS + 60):
         try:
             d = json.load(gzip.open(f, "rt"))
         except Exception:
@@ -96,6 +97,9 @@ def main():
     pstd = np.array([stats.get(s, {}).get("std", 0.0) for s in sids], dtype=np.float32)
 
     kst_now = latest_t.replace(tzinfo=timezone.utc).astimezone(KST)
+    # 학습(train.build_grid)과 같은 정각 기준 10분 칸으로 맞춘다
+    kst_now = (kst_now + timedelta(minutes=5)).replace(second=0, microsecond=0)
+    kst_now = kst_now.replace(minute=kst_now.minute - kst_now.minute % 10)
     hour = kst_now.hour + kst_now.minute / 60
     dow = flow.weekday(kst_now)   # 공휴일이면 일요일
 
@@ -121,7 +125,8 @@ def main():
             np.full(len(sids), float(dow >= 5)),
             np.full(len(sids), float(h)),
             pmean, pstd,
-        ] + flow.cols(kst_now, h // 10, every, fl_out, fl_in)
+        ] + flow.cols(kst_now, h // 10, every, fl_out, fl_in) \
+          + flow.history_cols(grid, n - 1, h // 10, every)
         X = np.column_stack(cols).astype(np.float32)
         delta = booster.inplace_predict(X)
         delta = np.where(np.abs(delta) < DEADBAND, 0.0, delta)

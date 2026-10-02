@@ -71,3 +71,24 @@ def cols(now, h_slots, si, out, inn):
         i_ += inn[w, d.hour][si] / 6
     w0 = _day(now, nd)
     return [o, i_, i_ - o, out[w0, now.hour][si], inn[w0, now.hour][si]]
+
+
+# 어제·그제·지난주 같은 시각부터 실제로 얼마나 변했나. 대여 이력의 '평소 흐름'과
+# 달리 트럭 움직임까지 들어 있다. 학습과 예측이 이 함수 하나를 같이 쓴다.
+# 넣자 2시간 뒤 평균 오차가 0.806 → 0.789대, 2대 이상 적중률이 85.1 → 85.5%
+# (튜닝에 안 쓴 9/23~10/2 세 기간 합산, 6시간 블록 재추출 95% 구간 +0.2~+0.6%p).
+DAY, WEEK = 144, 1008                    # 칸 수 (1칸 = 10분)
+HIST_NAMES = ["어제_뒤변화", "그제_뒤변화", "지난주_뒤변화", "지난주_대비", "3시간전차이", "어제_목표차"]
+
+
+def history_cols(grid, t, h_slots, si):
+    """grid: (시각, 대여소) 재고 격자, t: 지금 칸. 과거 칸이 없거나 비면 NaN."""
+    def at(k):
+        return grid[k][si] if k >= 0 else np.full(len(si), np.nan, dtype=np.float32)
+    c = grid[t][si]
+    return [at(t - DAY + h_slots) - at(t - DAY),
+            at(t - 2 * DAY + h_slots) - at(t - 2 * DAY),
+            at(t - WEEK + h_slots) - at(t - WEEK),
+            c - at(t - WEEK),
+            c - at(t - 18),
+            at(t - DAY + h_slots) - c]

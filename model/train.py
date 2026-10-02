@@ -9,7 +9,7 @@
   - 0 아래로만 자른다. name_cn 의 숫자는 상한이 아니다 — 관측값의 8%가 그
     숫자를 넘었고, 상한으로 쓰면 만석 근처 오차가 4배로 뛴다.
   - 예측 시점차(10~120분)를 피처로 넣어 모델 하나로 전 구간을 커버한다.
-  - 변화량이 0.8대에 못 미치면 움직이지 않는다. 확신 없이 흔들면 '그대로
+  - 변화량이 0.7대에 못 미치면 움직이지 않는다. 확신 없이 흔들면 '그대로
     유지'보다 적중률이 떨어졌고, 둔감폭을 두자 적중률은 그 수준으로
     돌아오면서 큰 변화 감지는 3분의 1이 남았다.
   - 대여 이력 20개월의 '평소 흐름'(flow.py)을 피처로 넣는다. 재고만으로는
@@ -17,6 +17,10 @@
     앞섰다. 오답의 대부분인 0~2대 대여소에서 누가 빌려 갈지를 알려준다.
   - 공휴일은 일요일로 본다 (flow.weekday). 추석 당일 오차가 35% 커졌던 걸
     대부분 되돌렸다.
+  - 어제·그제·지난주 같은 시각의 실제 변화(flow.history_cols)를 넣고 모델을
+    키웠다(깊이 6→10, 400→800그루, 둔감폭 0.8→0.7). 튜닝 기간(9/20~23)에서만
+    고르고, 튜닝에 안 쓴 세 기간(9/23~10/2)에서 2시간 뒤 오차 0.806→0.789대,
+    2대 적중률 85.1→85.5%. 작지만 0을 안 걸치는 개선이다(experiments12.py).
   - 검증 구간의 예측 성공·실패로 '이 예측값이면 실제로는 몇 대였나'를
     모아 calibration.json 에 남긴다. 사이트가 예측마다 오차범위를 붙인다.
 
@@ -35,7 +39,7 @@ import numpy as np
 import flow
 
 HORIZONS = [1, 2, 3, 6, 9, 12]          # 10,20,30,60,90,120분 (1칸=10분)
-DEADBAND = 0.8                          # 이만큼 안 움직인다고 보면 그대로 둔다
+DEADBAND = 0.7                          # 이만큼 안 움직인다고 보면 그대로 둔다
 LAGS = [1, 3, 6, 144]                   # 10분, 30분, 1시간, 24시간 전
 MAXLAG = max(LAGS)
 OUT = os.path.dirname(os.path.abspath(__file__))
@@ -67,7 +71,12 @@ def build_grid(snaps):
     """10분 격자에 스냅. 수집이 밀려도 같은 칸으로 모인다."""
     sids = sorted(set().union(*[set(s) for _, s in snaps]))
     idx = {s: i for i, s in enumerate(sids)}
-    t0 = snaps[0][0]
+    # 칸을 정각 기준 10분(…:00, :10, :20)에 맞춘다. 첫 스냅샷(8/31 11:18)을
+    # 그대로 기준으로 삼았더니 모든 칸이 실제보다 8분 늦은 시각으로 기록돼,
+    # 실제 시각을 쓰는 predict.py 와 시간대·흐름 프로필이 어긋났다.
+    first = snaps[0][0]
+    t0 = first - timedelta(minutes=first.minute % 10, seconds=first.second,
+                           microseconds=first.microsecond)
     n = int(round((snaps[-1][0] - t0).total_seconds() / 600)) + 1
     grid = np.full((n, len(sids)), np.nan, dtype=np.float32)
     for t, stock in snaps:
@@ -108,6 +117,7 @@ def make_rows(grid, t0, lo, hi, prof_mean, prof_std, fl_out, fl_in, cap_rows, rn
                 prof_std[si],
             ]
             cols += flow.cols(kst[t], h, si, fl_out, fl_in)
+            cols += flow.history_cols(grid, t, h, si)
             X.append(np.column_stack(cols))
             y.append(nxt[si])
             base.append(cur[si])
@@ -118,7 +128,7 @@ def make_rows(grid, t0, lo, hi, prof_mean, prof_std, fl_out, fl_in, cap_rows, rn
 
 FEATURES = (["현재재고"] + [f"{m}전차이" for m in ("10분", "30분", "1시간", "24시간")]
             + ["시각sin", "시각cos", "요일", "주말", "예측시점차", "평소평균", "평소변동"]
-            + flow.NAMES)
+            + flow.NAMES + flow.HIST_NAMES)
 
 
 def calibration(pred, actual, hors):
@@ -159,8 +169,8 @@ def main():
     print(f"대여 이력 흐름이 붙은 대여소 {int((~np.isnan(fl_out[0, 0])).sum())}곳")
 
     from xgboost import XGBRegressor
-    params = dict(n_estimators=400, max_depth=6, learning_rate=0.06,
-                  subsample=0.8, colsample_bytree=0.8, min_child_weight=50,
+    params = dict(n_estimators=800, max_depth=10, learning_rate=0.04,
+                  subsample=0.8, colsample_bytree=0.8, min_child_weight=100,
                   tree_method="hist", n_jobs=-1, random_state=42)
 
     # 1) 뒤쪽을 떼어 정확도를 잰다
