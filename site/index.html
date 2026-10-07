@@ -173,7 +173,9 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const STEPS = [0, 10, 20, 30, 60, 90, 120];   // 0 = 지금(실측)
+const STEPS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120];   // 0 = 지금(실측)
+// 70분 → "1시간 10분". 1.1시간처럼 소수로 쓰면 읽기 어렵다.
+const ago = m => m < 60 ? m + "분" : Math.floor(m / 60) + "시간" + (m % 60 ? " " + (m % 60) + "분" : "");
 const RADIUS_M = 1000;                        // 걸어서 15분쯤
 const MAX_PINS = 30;
 
@@ -186,7 +188,9 @@ let data, stations, map, markers = {}, picked = null, step = 0;
 let here = null, hereLayer = null, nearby = [];
 
 const grade = n => n <= 2 ? ["bad","부족"] : n <= 5 ? ["mid","보통"] : ["ok","여유"];
-const valueAt = (id, s) => s === 0 ? data.stock[id] : (data.pred[id] || [])[s - 1];
+// 예측 배열의 몇 번째가 그 시점인지는 파일의 horizons 로 찾는다 (시점 수가 바뀌어도 안 어긋나게).
+const valueAt = (id, s) => s === 0 ? data.stock[id]
+  : (data.pred[id] || [])[(data.horizons || []).indexOf(STEPS[s])];
 const metersTo = s => map.distance([here.la, here.lo], [s.la, s.lo]);
 
 function icon(n){
@@ -236,7 +240,7 @@ function pick(latlng){
 function redraw(){
   const mins = STEPS[step];
   document.getElementById("when").innerHTML = mins === 0 ? "지금"
-    : `${mins < 60 ? mins + "분" : (mins/60) + "시간"} 뒤 <small>${clock(mins)}</small>`;
+    : `${ago(mins)} 뒤 <small>${clock(mins)}</small>`;
 
   for(const id in markers) map.removeLayer(markers[id]);
   markers = {};
@@ -273,7 +277,10 @@ function spread(v, s){
   const e = c.edges;
   let b = e.length - 1;
   for(let i = 0; i < e.length - 1; i++) if(v < e[i + 1]){ b = i; break; }
-  return (c.by_horizon[String(STEPS[s])] || [])[b] || null;
+  // 오차범위표는 학습한 시점(10·20·30·60·90·120분)에만 있다. 그 사이는 가까운 시점 것을 쓴다.
+  const keys = Object.keys(c.by_horizon).map(Number);
+  const k = keys.reduce((a, x) => Math.abs(x - STEPS[s]) < Math.abs(a - STEPS[s]) ? x : a, keys[0]);
+  return (c.by_horizon[String(k)] || [])[b] || null;
 }
 
 function showSheet(id){
@@ -282,7 +289,7 @@ function showSheet(id){
   const walk = Math.max(1, Math.round(metersTo(stations[id]) / 67));
   document.getElementById("s-name").textContent = stations[id].n;
   document.getElementById("s-sub").textContent =
-    `걸어서 ${walk}분 · ` + (step === 0 ? "지금 있는 자전거" : `${STEPS[step]}분 뒤 예상`);
+    `걸어서 ${walk}분 · ` + (step === 0 ? "지금 있는 자전거" : `${ago(STEPS[step])} 뒤 예상`);
   const cnt = document.getElementById("s-cnt");
   cnt.textContent = v + "대"; cnt.className = "cnt " + cls;
   const tag = document.getElementById("s-tag");
@@ -375,12 +382,13 @@ function showHits(list){
     // 대여소 이름에 없으면 지도 검색으로. 한 글자마다 부르지 않도록 늦춘다.
     timer = setTimeout(async () => showHits(await searchRemote(q)), 450);
   });
-  // 슬라이더는 분 단위로 고르게 움직여야 눈금(지금·1시간·2시간)과 맞는다.
-  // 예측이 있는 시점(STEPS)만 고를 수 있게 가장 가까운 칸으로 붙인다.
+  // 슬라이더는 분 단위(10분 간격)로 움직여 눈금(지금·1시간·2시간)과 맞는다.
+  // 예측 파일이 아직 6개 시점짜리면 가장 가까운 시점으로 붙인다.
   document.getElementById("slider").addEventListener("input", e => {
-    const m = +e.target.value;
-    step = STEPS.reduce((b, v, i) => Math.abs(v - m) < Math.abs(STEPS[b] - m) ? i : b, 0);
-    e.target.value = STEPS[step];
+    const m = +e.target.value, have = [0].concat(data.horizons || []);
+    const near = have.reduce((a, x) => Math.abs(x - m) < Math.abs(a - m) ? x : a, 0);
+    step = STEPS.indexOf(near);
+    e.target.value = near;
     redraw();
   });
   // 현위치 버튼. 결과를 알림창으로 띄우면 눌러 없애야 하니 말풍선으로 말한다.

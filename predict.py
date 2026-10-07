@@ -36,7 +36,9 @@ MODEL = os.path.join(HERE, "model")
 sys.path.insert(0, MODEL)
 import flow  # noqa: E402
 
-HORIZONS = [10, 20, 30, 60, 90, 120]     # 분
+# 사이트 슬라이더가 10분마다 멈출 수 있게 10분 단위로 다 낸다. 모델은 10·20·30·60·90·120분으로
+# 학습했지만 예측 시점을 피처로 받으므로 그 사이 시점도 낼 수 있다 (9일간 검증으로 확인).
+HORIZONS = list(range(10, 121, 10))      # 분
 LAGS = [1, 3, 6, 144]                    # 10분, 30분, 1시간, 24시간 전 (1칸=10분)
 # 지난주 같은 시각까지 본다(flow.history_cols). 7일 + 예측 시점 여유.
 NEED_SLOTS = 7 * 144 + 14
