@@ -145,7 +145,7 @@
 <div class="panel hidden" id="panel">
   <div class="q">언제 타실 건가요?</div>
   <div class="when" id="when">지금</div>
-  <input type="range" id="slider" min="0" max="6" step="1" value="0">
+  <input type="range" id="slider" min="0" max="120" step="10" value="0">
   <div class="ticks"><span>지금</span><span>1시간</span><span>2시간</span></div>
   <div class="stamp" id="stamp"></div>
 </div>
@@ -375,8 +375,13 @@ function showHits(list){
     // 대여소 이름에 없으면 지도 검색으로. 한 글자마다 부르지 않도록 늦춘다.
     timer = setTimeout(async () => showHits(await searchRemote(q)), 450);
   });
+  // 슬라이더는 분 단위로 고르게 움직여야 눈금(지금·1시간·2시간)과 맞는다.
+  // 예측이 있는 시점(STEPS)만 고를 수 있게 가장 가까운 칸으로 붙인다.
   document.getElementById("slider").addEventListener("input", e => {
-    step = +e.target.value; redraw();
+    const m = +e.target.value;
+    step = STEPS.reduce((b, v, i) => Math.abs(v - m) < Math.abs(STEPS[b] - m) ? i : b, 0);
+    e.target.value = STEPS[step];
+    redraw();
   });
   // 현위치 버튼. 결과를 알림창으로 띄우면 눌러 없애야 하니 말풍선으로 말한다.
   const gps = document.getElementById("gps"), toast = document.getElementById("toast");
