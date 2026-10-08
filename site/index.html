@@ -175,7 +175,7 @@
 <script>
 const STEPS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120];   // 0 = 지금(실측)
 // 70분 → "1시간 10분". 1.1시간처럼 소수로 쓰면 읽기 어렵다.
-const ago = m => m < 60 ? m + "분" : Math.floor(m / 60) + "시간" + (m % 60 ? " " + (m % 60) + "분" : "");
+const fmtMin = m => m < 60 ? m + "분" : Math.floor(m / 60) + "시간" + (m % 60 ? " " + (m % 60) + "분" : "");
 const RADIUS_M = 1000;                        // 걸어서 15분쯤
 const MAX_PINS = 30;
 
@@ -240,7 +240,7 @@ function pick(latlng){
 function redraw(){
   const mins = STEPS[step];
   document.getElementById("when").innerHTML = mins === 0 ? "지금"
-    : `${ago(mins)} 뒤 <small>${clock(mins)}</small>`;
+    : `${fmtMin(mins)} 뒤 <small>${clock(mins)}</small>`;
 
   for(const id in markers) map.removeLayer(markers[id]);
   markers = {};
@@ -289,7 +289,7 @@ function showSheet(id){
   const walk = Math.max(1, Math.round(metersTo(stations[id]) / 67));
   document.getElementById("s-name").textContent = stations[id].n;
   document.getElementById("s-sub").textContent =
-    `걸어서 ${walk}분 · ` + (step === 0 ? "지금 있는 자전거" : `${ago(STEPS[step])} 뒤 예상`);
+    `걸어서 ${walk}분 · ` + (step === 0 ? "지금 있는 자전거" : `${fmtMin(STEPS[step])} 뒤 예상`);
   const cnt = document.getElementById("s-cnt");
   cnt.textContent = v + "대"; cnt.className = "cnt " + cls;
   const tag = document.getElementById("s-tag");
