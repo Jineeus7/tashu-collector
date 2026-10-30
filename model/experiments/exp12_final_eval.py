@@ -14,7 +14,7 @@
   3시간전차이   지금 − 3시간 전
   어제_목표차   어제 목표 시각 재고 − 지금 재고
 
-실행: python3 experiments12.py ../data flow_profile.npz
+실행 (저장소 루트에서): python3 model/experiments/exp12_final_eval.py data model/flow_profile.npz
 """
 
 import json
@@ -25,7 +25,7 @@ from datetime import datetime, timedelta
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # model/
 import flow  # noqa: E402
 import train as T  # noqa: E402
 

@@ -11,7 +11,7 @@
   all    위 셋 전부
   clf    all 을 분류로 (탈 수 있나/없나를 직접 맞히게)
 
-실행: python3 experiments.py <스냅샷 폴더>
+실행 (저장소 루트에서): python3 model/experiments/exp01_candidates.py data
 """
 
 import glob

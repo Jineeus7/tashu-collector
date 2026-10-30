@@ -7,7 +7,7 @@
 시간대 프로필을 피처에 넣는다. 먼 시점일수록 "지금 몇 대"보다 "이 대여소가
 그 시각에 보통 몇 대"가 중요해질 것이기 때문이다.
 
-실행: python3 experiments3.py <스냅샷 폴더>
+실행 (저장소 루트에서): python3 model/experiments/exp03_where_change.py data
 """
 
 import os
@@ -16,7 +16,7 @@ from datetime import timedelta
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # model/
 from experiments import (PARAMS, build_grid, hour_profile,  # noqa: E402
                          load_snapshots, near_matrix)
 

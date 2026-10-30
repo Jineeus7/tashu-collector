@@ -1,12 +1,12 @@
 """수집한 스냅샷을 모델 학습에 쓰기 좋은 형태로 읽어들인다.
 
-    import load
+    import sys; sys.path.insert(0, "tools"); import load   # 저장소 루트에서
     rows = load.rows()        # [(수집시각, 대여소ID, 거치수), ...]
     meta = load.stations()    # {대여소ID: {name, address, x_pos, ...}}
 
 pandas를 쓴다면:
 
-    import pandas as pd, load
+    import pandas as pd, sys; sys.path.insert(0, "tools"); import load
     df = pd.DataFrame(load.rows(), columns=["time", "station", "count"])
 
 저장소의 data/ 대신 로컬 보관함을 읽으려면 TASHU_DATA 환경변수를 지정한다.

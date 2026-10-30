@@ -7,7 +7,7 @@
 흐름 프로필을 '일요일' 것으로 바꿔 넣는다. 학습은 추석 전 데이터로만 해서
 연휴를 한 번도 본 적 없는 모델로 잰다 — 다가오는 개천절·한글날과 같은 조건.
 
-실행: python3 experiments11.py ../data flow_profile.npz
+실행 (저장소 루트에서): python3 model/experiments/exp11_holiday.py data model/flow_profile.npz
 """
 
 import os
@@ -16,7 +16,7 @@ from datetime import date, timedelta
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # model/
 import flow  # noqa: E402
 import train as T  # noqa: E402
 

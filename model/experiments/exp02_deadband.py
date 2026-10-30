@@ -6,7 +6,7 @@
 τ 를 올리면 적중률은 '그대로 유지' 쪽으로 수렴하고, 큰 변화 감지율은
 떨어진다. 그 교환비를 본다.
 
-실행: python3 experiments2.py <스냅샷 폴더>
+실행 (저장소 루트에서): python3 model/experiments/exp02_deadband.py data
 """
 
 import os
@@ -14,7 +14,7 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # model/
 from experiments import (HORIZONS, PARAMS, build_grid, hour_profile,  # noqa: E402
                          load_snapshots, make_featfn, make_rows, near_matrix)
 from datetime import timedelta  # noqa: E402
